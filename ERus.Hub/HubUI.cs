@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Numerics;
+using System.Threading.Tasks;
 using ImGuiNET;
 
 namespace ERus.Hub;
@@ -21,6 +23,13 @@ public class HubUI
     private string _newEngineVersion = "1.0.0";
     private string _newEnginePath = @"E:\Projetos\ERus\ERus.Editor\bin\Debug\net10.0\ERus.Editor.exe";
 
+    // GitHub Releases state
+    private GitHubReleaseManager _releaseManager;
+    private List<GitHubRelease> _availableReleases = new List<GitHubRelease>();
+    private bool _isLoadingReleases = false;
+    private float _downloadProgress = -1f; // -1 indicates not downloading
+    private string _downloadingVersion = "";
+
     public HubUI()
     {
         _config = ConfigManager.Load();
@@ -28,6 +37,14 @@ public class HubUI
         {
             _selectedEngineVersion = _config.Installs[0].VersionName;
         }
+
+        _releaseManager = new GitHubReleaseManager();
+        _isLoadingReleases = true;
+        Task.Run(async () => 
+        {
+            _availableReleases = await _releaseManager.GetAvailableReleasesAsync();
+            _isLoadingReleases = false;
+        });
     }
 
     public void Draw()
@@ -100,23 +117,105 @@ public class HubUI
     private void DrawInstallsTab()
     {
         ImGui.Spacing();
-        if (ImGui.Button("Add Engine", new Vector2(120, 30)))
+        if (ImGui.Button("Add Local Engine", new Vector2(150, 30)))
         {
             _triggerAddEngineModal = true;
         }
 
         ImGui.Spacing();
         ImGui.Separator();
+        ImGui.Text("Installed Locally");
+        ImGui.Separator();
         ImGui.Spacing();
 
         foreach (var inst in _config.Installs.ToArray())
         {
-            ImGui.PushID(inst.ExecutablePath);
+            ImGui.PushID("local_" + inst.ExecutablePath);
             ImGui.Text(inst.VersionName);
             ImGui.TextDisabled(inst.ExecutablePath);
             ImGui.Separator();
             ImGui.PopID();
         }
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Text("Available on GitHub");
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        if (_isLoadingReleases)
+        {
+            ImGui.Text("Fetching releases from GitHub...");
+        }
+        else if (_availableReleases.Count == 0)
+        {
+            ImGui.TextDisabled("No releases found.");
+        }
+        else
+        {
+            foreach (var release in _availableReleases)
+            {
+                ImGui.PushID("github_" + release.TagName);
+                ImGui.Text($"{release.Name} ({release.TagName})");
+                ImGui.TextDisabled($"Published at: {release.PublishedAt.ToLocalTime()}");
+                
+                // Verifica se já está instalada
+                bool isInstalled = _config.Installs.Exists(i => i.VersionName == release.TagName);
+                
+                if (isInstalled)
+                {
+                    ImGui.SameLine(ImGui.GetWindowWidth() - 100);
+                    ImGui.TextColored(new Vector4(0, 1, 0, 1), "Installed");
+                }
+                else
+                {
+                    if (_downloadProgress >= 0 && _downloadingVersion == release.TagName)
+                    {
+                        ImGui.ProgressBar(_downloadProgress, new Vector2(ImGui.GetWindowWidth() - 50, 20));
+                    }
+                    else
+                    {
+                        // Enable download button only if not currently downloading something else
+                        ImGui.BeginDisabled(_downloadProgress >= 0);
+                        ImGui.SameLine(ImGui.GetWindowWidth() - 100);
+                        if (ImGui.Button("Download", new Vector2(80, 24)))
+                        {
+                            StartDownload(release);
+                        }
+                        ImGui.EndDisabled();
+                    }
+                }
+                ImGui.Separator();
+                ImGui.PopID();
+            }
+        }
+    }
+
+    private void StartDownload(GitHubRelease release)
+    {
+        if (release.Assets.Count == 0) return;
+        
+        // Pega o primeiro asset que termine em .zip ou simplesmente o primeiro
+        var asset = release.Assets.Find(a => a.Name.EndsWith(".zip")) ?? release.Assets[0];
+
+        _downloadingVersion = release.TagName;
+        _downloadProgress = 0f;
+
+        Task.Run(async () =>
+        {
+            try
+            {
+                await _releaseManager.DownloadAndInstallAsync(release, asset, _config, (progress) =>
+                {
+                    _downloadProgress = progress;
+                });
+            }
+            finally
+            {
+                _downloadProgress = -1f;
+                _downloadingVersion = "";
+            }
+        });
     }
 
     private void DrawNewProjectModal()
