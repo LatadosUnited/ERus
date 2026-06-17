@@ -1,0 +1,4 @@
+graphify extract ./ERus \
+  --extractor moonshot \
+  --model moonshot-v1-8k \
+  --output ./graphify_data

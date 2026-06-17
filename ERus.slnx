@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="ERus.Editor/ERus.Editor.csproj" />
+  <Project Path="ERus.Engine/ERus.Engine.csproj" />
+  <Project Path="ERus.Hub/ERus.Hub.csproj" />
+</Solution>

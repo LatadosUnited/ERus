@@ -1,0 +1,248 @@
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Numerics;
+using ImGuiNET;
+
+namespace ERus.Hub;
+
+public class HubUI
+{
+    private HubConfig _config;
+    
+    // Modal New Project state
+    private bool _triggerNewProjectModal = false;
+    private string _newProjectName = "NewGame";
+    private string _newProjectPath = @"C:\Games";
+    private string _selectedEngineVersion = "";
+    
+    // Modal Add Engine state
+    private bool _triggerAddEngineModal = false;
+    private string _newEngineVersion = "1.0.0";
+    private string _newEnginePath = @"E:\Projetos\ERus\ERus.Editor\bin\Debug\net10.0\ERus.Editor.exe";
+
+    public HubUI()
+    {
+        _config = ConfigManager.Load();
+        if (_config.Installs.Count > 0)
+        {
+            _selectedEngineVersion = _config.Installs[0].VersionName;
+        }
+    }
+
+    public void Draw()
+    {
+        ImGui.SetNextWindowPos(new Vector2(0, 0));
+        ImGui.SetNextWindowSize(ImGui.GetIO().DisplaySize);
+        ImGui.Begin("ERus Hub", ImGuiWindowFlags.NoDecoration | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoSavedSettings);
+
+        if (ImGui.BeginTabBar("HubTabs"))
+        {
+            if (ImGui.BeginTabItem("Projects"))
+            {
+                DrawProjectsTab();
+                ImGui.EndTabItem();
+            }
+
+            if (ImGui.BeginTabItem("Installs"))
+            {
+                DrawInstallsTab();
+                ImGui.EndTabItem();
+            }
+            ImGui.EndTabBar();
+        }
+
+        DrawNewProjectModal();
+        DrawAddEngineModal();
+
+        ImGui.End();
+    }
+
+    private void DrawProjectsTab()
+    {
+        ImGui.Spacing();
+        if (ImGui.Button("New Project", new Vector2(120, 30)))
+        {
+            _triggerNewProjectModal = true;
+        }
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        if (_config.Projects.Count == 0)
+        {
+            ImGui.Text("You have no projects yet.");
+        }
+        else
+        {
+            foreach (var proj in _config.Projects.ToArray())
+            {
+                ImGui.PushID(proj.Path);
+                ImGui.BeginGroup();
+                ImGui.TextDisabled(proj.EngineVersion);
+                ImGui.SameLine();
+                ImGui.Text(proj.Name);
+                ImGui.TextDisabled(proj.Path);
+                
+                ImGui.SameLine(ImGui.GetWindowWidth() - 100);
+                if (ImGui.Button("Open", new Vector2(80, 24)))
+                {
+                    OpenProject(proj);
+                }
+                ImGui.EndGroup();
+                ImGui.Separator();
+                ImGui.PopID();
+            }
+        }
+    }
+
+    private void DrawInstallsTab()
+    {
+        ImGui.Spacing();
+        if (ImGui.Button("Add Engine", new Vector2(120, 30)))
+        {
+            _triggerAddEngineModal = true;
+        }
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        foreach (var inst in _config.Installs.ToArray())
+        {
+            ImGui.PushID(inst.ExecutablePath);
+            ImGui.Text(inst.VersionName);
+            ImGui.TextDisabled(inst.ExecutablePath);
+            ImGui.Separator();
+            ImGui.PopID();
+        }
+    }
+
+    private void DrawNewProjectModal()
+    {
+        if (_triggerNewProjectModal)
+        {
+            ImGui.OpenPopup("Create New Project");
+            _triggerNewProjectModal = false;
+        }
+
+        bool dummy = true;
+        if (ImGui.BeginPopupModal("Create New Project", ref dummy, ImGuiWindowFlags.AlwaysAutoResize))
+        {
+            ImGui.InputText("Project Name", ref _newProjectName, 64);
+            ImGui.InputText("Path", ref _newProjectPath, 256);
+            
+            if (ImGui.BeginCombo("Engine Version", _selectedEngineVersion))
+            {
+                foreach (var inst in _config.Installs)
+                {
+                    bool isSelected = (inst.VersionName == _selectedEngineVersion);
+                    if (ImGui.Selectable(inst.VersionName, isSelected))
+                    {
+                        _selectedEngineVersion = inst.VersionName;
+                    }
+                    if (isSelected) ImGui.SetItemDefaultFocus();
+                }
+                ImGui.EndCombo();
+            }
+
+            ImGui.Spacing();
+            if (ImGui.Button("Create", new Vector2(120, 0)))
+            {
+                string fullPath = Path.Combine(_newProjectPath, _newProjectName);
+                if (!Directory.Exists(fullPath))
+                {
+                    Directory.CreateDirectory(fullPath);
+                }
+                
+                var proj = new ProjectData
+                {
+                    Name = _newProjectName,
+                    Path = fullPath,
+                    EngineVersion = _selectedEngineVersion,
+                    LastModified = DateTime.Now
+                };
+                
+                _config.Projects.Add(proj);
+                ConfigManager.Save(_config);
+                ImGui.CloseCurrentPopup();
+            }
+            ImGui.SameLine();
+            if (ImGui.Button("Cancel", new Vector2(120, 0)))
+            {
+                ImGui.CloseCurrentPopup();
+            }
+            ImGui.EndPopup();
+        }
+    }
+
+    private void DrawAddEngineModal()
+    {
+        if (_triggerAddEngineModal)
+        {
+            ImGui.OpenPopup("Add Engine Installation");
+            _triggerAddEngineModal = false;
+        }
+
+        bool dummy = true;
+        if (ImGui.BeginPopupModal("Add Engine Installation", ref dummy, ImGuiWindowFlags.AlwaysAutoResize))
+        {
+            ImGui.InputText("Version Name", ref _newEngineVersion, 32);
+            ImGui.InputText("Executable Path", ref _newEnginePath, 256);
+
+            ImGui.Spacing();
+            if (ImGui.Button("Add", new Vector2(120, 0)))
+            {
+                var inst = new EngineInstall
+                {
+                    VersionName = _newEngineVersion,
+                    ExecutablePath = _newEnginePath
+                };
+                
+                _config.Installs.Add(inst);
+                ConfigManager.Save(_config);
+                
+                if (string.IsNullOrEmpty(_selectedEngineVersion))
+                    _selectedEngineVersion = _newEngineVersion;
+                    
+                ImGui.CloseCurrentPopup();
+            }
+            ImGui.SameLine();
+            if (ImGui.Button("Cancel", new Vector2(120, 0)))
+            {
+                ImGui.CloseCurrentPopup();
+            }
+            ImGui.EndPopup();
+        }
+    }
+
+    private void OpenProject(ProjectData project)
+    {
+        var install = _config.Installs.Find(i => i.VersionName == project.EngineVersion);
+        if (install == null || !File.Exists(install.ExecutablePath))
+        {
+            Console.WriteLine($"[Hub] Erro: Executável da engine não encontrado para a versão {project.EngineVersion}");
+            return;
+        }
+
+        project.LastModified = DateTime.Now;
+        ConfigManager.Save(_config);
+
+        try
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = install.ExecutablePath,
+                Arguments = $"--project \"{project.Path}\"",
+                UseShellExecute = false,
+                WorkingDirectory = Path.GetDirectoryName(install.ExecutablePath)
+            };
+            Process.Start(startInfo);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Hub] Falha ao abrir engine: {ex.Message}");
+        }
+    }
+}

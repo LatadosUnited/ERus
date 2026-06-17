@@ -1,0 +1,51 @@
+{
+  "Entities": [
+    {
+      "NetworkId": -1,
+      "Tag": "Cube",
+      "PosX": 0,
+      "PosY": 0,
+      "PosZ": 0,
+      "RotX": 0,
+      "RotY": 0,
+      "RotZ": 0,
+      "ScaX": 1,
+      "ScaY": 1,
+      "ScaZ": 1,
+      "MeshType": 1,
+      "AssetPath": null,
+      "HasCamera": false,
+      "CamFov": 45,
+      "CamIsPrimary": true,
+      "CamNear": 0.1,
+      "CamFar": 1000,
+      "Scripts": [
+        {
+          "ScriptType": "PlayerController",
+          "ScriptFields": {}
+        }
+      ]
+    },
+    {
+      "NetworkId": -1,
+      "Tag": "Camera",
+      "PosX": 0,
+      "PosY": 0.99997926,
+      "PosZ": 2.2965882,
+      "RotX": -21,
+      "RotY": 0,
+      "RotZ": 0,
+      "ScaX": 1,
+      "ScaY": 1,
+      "ScaZ": 1,
+      "MeshType": -1,
+      "AssetPath": null,
+      "HasCamera": true,
+      "CamFov": 45,
+      "CamIsPrimary": true,
+      "CamNear": 0.1,
+      "CamFar": 1000,
+      "Scripts": []
+    }
+  ]
+}
