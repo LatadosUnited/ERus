@@ -13,6 +13,7 @@ public class InspectorWindow : EditorWindow
 {
     private readonly EditorUIController _controller;
     private readonly ERus.Engine.Core.Engine _engine;
+    private System.Collections.Concurrent.ConcurrentQueue<Action> _mainThreadActions = new();
 
     public InspectorWindow(EditorUIController controller, ERus.Engine.Core.Engine engine) : base("Inspector") 
     {
@@ -31,7 +32,9 @@ public class InspectorWindow : EditorWindow
 
     protected override void DrawContent()
     {
-        if (_controller.SelectedEntities.Count == 0)
+        while (_mainThreadActions.TryDequeue(out var action)) action();
+
+        if (EditorServices.Selection.SelectedEntities.Count == 0)
         {
             ImGui.TextColored(new Vector4(0.5f, 0.5f, 0.5f, 1.0f), "Nenhuma Entidade Selecionada");
             return;
@@ -42,10 +45,10 @@ public class InspectorWindow : EditorWindow
         
         var registry = ecsModule.ActiveScene.Registry;
 
-        if (_controller.SelectedEntities.Count > 1)
+        if (EditorServices.Selection.SelectedEntities.Count > 1)
         {
             ImGui.TextColored(new Vector4(0.5f, 0.8f, 1.0f, 1.0f),
-                $"{_controller.SelectedEntities.Count} Entidades Selecionadas");
+                $"{EditorServices.Selection.SelectedEntities.Count} Entidades Selecionadas");
             ImGui.Separator();
 
             DrawBatchTransformEditor(registry);
@@ -54,7 +57,7 @@ public class InspectorWindow : EditorWindow
             return;
         }
 
-        var entity = _controller.SelectedEntity!.Value;
+        var entity = EditorServices.Selection.SelectedEntity!.Value;
 
         // TAG COMPONENT
         if (registry.HasComponent<TagComponent>(entity))
@@ -116,16 +119,6 @@ public class InspectorWindow : EditorWindow
                         transform.Position = new Silk.NET.Maths.Vector3D<float>(pos.X, pos.Y, pos.Z);
                         transform.Rotation = new Silk.NET.Maths.Vector3D<float>(rot.X, rot.Y, rot.Z);
                         transform.Scale = new Silk.NET.Maths.Vector3D<float>(scale.X, scale.Y, scale.Z);
-
-                        var netModule = _engine.GetModule<ERus.Engine.Modules.NetworkModule>();
-                        if (netModule != null && registry.HasComponent<NetworkIdentityComponent>(_controller.SelectedEntity.Value))
-                        {
-                            var netId = registry.GetComponent<NetworkIdentityComponent>(_controller.SelectedEntity.Value).NetworkId;
-                            var p = new Silk.NET.Maths.Vector3D<float>(pos.X, pos.Y, pos.Z);
-                            var r = new Silk.NET.Maths.Vector3D<float>(rot.X, rot.Y, rot.Z);
-                            var s = new Silk.NET.Maths.Vector3D<float>(scale.X, scale.Y, scale.Z);
-                            netModule.Replication?.SendTransform(netId, p, r, s);
-                        }
                     }
                 }
             }
@@ -149,15 +142,29 @@ public class InspectorWindow : EditorWindow
                     if (ImGui.Combo("##PrimitiveType", ref currentType, types, types.Length))
                     {
                         mesh.Type = (PrimitiveMeshType)currentType;
+                        var netModule = _engine.GetModule<ERus.Engine.Modules.NetworkModule>();
+                        if (netModule != null && registry.HasComponent<NetworkIdentityComponent>(entity))
+                        {
+                            var netId = registry.GetComponent<NetworkIdentityComponent>(entity).NetworkId;
+                            netModule.Replication?.SendUpdateMesh(netId, currentType, mesh.AssetHash ?? "");
+                        }
                     }
                     ImGui.PopItemWidth();
 
                     DrawPropertyLabel("Asset Path (.obj/.gltf)");
-                    string path = mesh.AssetPath ?? "";
-                    if (ImGui.InputText("##AssetPath", ref path, 512))
+                    string path = "";
+                    if (mesh.AssetGuid != Guid.Empty)
                     {
-                        mesh.AssetPath = string.IsNullOrWhiteSpace(path) ? null : path;
+                        path = _engine.AssetDatabase.GetPathByGuid(mesh.AssetGuid) ?? "(Desconhecido / Falta)";
                     }
+                    else
+                    {
+                        path = "(Nenhum)";
+                    }
+                    
+                    ImGui.BeginDisabled();
+                    ImGui.InputText("##AssetPath", ref path, 512);
+                    ImGui.EndDisabled();
                     if (ImGui.BeginDragDropTarget())
                     {
                         var payload = ImGui.AcceptDragDropPayload("ASSET_PATH");
@@ -170,7 +177,33 @@ public class InspectorWindow : EditorWindow
                                     dropped.EndsWith(".fbx", StringComparison.OrdinalIgnoreCase) ||
                                     dropped.EndsWith(".gltf", StringComparison.OrdinalIgnoreCase))
                                 {
-                                    mesh.AssetPath = dropped;
+                                    var guid = _engine.AssetDatabase.GetGuidByPath(dropped);
+                                    if (guid.HasValue)
+                                    {
+                                        mesh.AssetGuid = guid.Value;
+                                    }
+                                    mesh.AssetHash = null; // Limpa o hash até calcular o novo
+                                    
+                                    var netModule = _engine.GetModule<ERus.Engine.Modules.NetworkModule>();
+                                    if (netModule != null)
+                                    {
+                                        var targetEntity = entity;
+                                        _ = netModule.NetworkManager?.AssetSync?.AnnounceAssetAsync(dropped, (hash) => {
+                                            _mainThreadActions.Enqueue(() => {
+                                                if (registry.IsAlive(targetEntity) && registry.HasComponent<MeshComponent>(targetEntity))
+                                                {
+                                                    ref var updatedMesh = ref registry.GetComponent<MeshComponent>(targetEntity);
+                                                    updatedMesh.AssetHash = hash;
+                                                    
+                                                    if (registry.HasComponent<NetworkIdentityComponent>(targetEntity))
+                                                    {
+                                                        var netId = registry.GetComponent<NetworkIdentityComponent>(targetEntity).NetworkId;
+                                                        netModule.Replication?.SendUpdateMesh(netId, (int)updatedMesh.Type, hash);
+                                                    }
+                                                }
+                                            });
+                                        });
+                                    }
                                 }
                             }
                         }
@@ -421,7 +454,7 @@ public class InspectorWindow : EditorWindow
         {
             var netModule = _engine.GetModule<NetworkModule>();
 
-            foreach (var entity in _controller.SelectedEntities)
+            foreach (var entity in EditorServices.Selection.SelectedEntities)
             {
                 if (!registry.HasComponent<TransformComponent>(entity)) continue;
                 ref var t = ref registry.GetComponent<TransformComponent>(entity);
@@ -436,7 +469,7 @@ public class InspectorWindow : EditorWindow
                 if (netModule != null && registry.HasComponent<NetworkIdentityComponent>(entity))
                 {
                     var netId = registry.GetComponent<NetworkIdentityComponent>(entity).NetworkId;
-                    netModule.Replication?.SendTransform(netId, t.Position, t.Rotation, t.Scale);
+
                 }
             }
         }
@@ -449,10 +482,10 @@ public class InspectorWindow : EditorWindow
         ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.9f, 0.3f, 0.3f, 1.0f));
         ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(1.0f, 0.4f, 0.4f, 1.0f));
 
-        if (ImGui.Button($"{FontAwesome.Trash} Destroy {_controller.SelectedEntities.Count} Entities", new Vector2(-1, 30)))
+        if (ImGui.Button($"{FontAwesome.Trash} Destroy {EditorServices.Selection.SelectedEntities.Count} Entities", new Vector2(-1, 30)))
         {
             var netModule = _engine.GetModule<NetworkModule>();
-            foreach (var entity in _controller.SelectedEntities.ToList())
+            foreach (var entity in EditorServices.Selection.SelectedEntities.ToList())
             {
                 if (netModule != null && registry.HasComponent<NetworkIdentityComponent>(entity))
                 {
@@ -461,7 +494,7 @@ public class InspectorWindow : EditorWindow
                 }
                 registry.DestroyEntity(entity);
             }
-            _controller.ClearSelection();
+            EditorServices.Selection.ClearSelection();
         }
 
         ImGui.PopStyleColor(3);
@@ -482,7 +515,7 @@ public class InspectorWindow : EditorWindow
                 netModule.Replication?.SendDestroy(netId);
             }
             registry.DestroyEntity(entity);
-            _controller.SelectedEntity = null;
+            EditorServices.Selection.SelectedEntity = null;
         }
 
         ImGui.PopStyleColor(3);

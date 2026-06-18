@@ -30,7 +30,8 @@ public class SerializedEntity
 
     // Mesh
     public int MeshType { get; set; } = -1;
-    public string? AssetPath { get; set; }
+    public string? AssetPath { get; set; } // Obsoleto: Mantido para retrocompatibilidade
+    public Guid AssetGuid { get; set; }
 
     // Camera
     public bool HasCamera { get; set; } = false;
@@ -81,7 +82,7 @@ public static class SceneSerializer
             {
                 var mesh = registry.GetComponent<MeshComponent>(entity);
                 sEntity.MeshType = (int)mesh.Type;
-                sEntity.AssetPath = mesh.AssetPath;
+                sEntity.AssetGuid = mesh.AssetGuid;
             }
 
             if (registry.HasComponent<CameraComponent>(entity))
@@ -157,11 +158,19 @@ public static class SceneSerializer
             };
             registry.AddComponent(entity, t);
 
-            if (sEntity.MeshType != -1 || !string.IsNullOrEmpty(sEntity.AssetPath))
+            if (sEntity.MeshType != -1 || !string.IsNullOrEmpty(sEntity.AssetPath) || sEntity.AssetGuid != Guid.Empty)
             {
+                Guid guidToUse = sEntity.AssetGuid;
+                if (guidToUse == Guid.Empty && !string.IsNullOrEmpty(sEntity.AssetPath))
+                {
+                    // Retrocompatibilidade: Converte AssetPath para Guid
+                    var foundGuid = ERus.Engine.Core.Engine.Instance.AssetDatabase.GetGuidByPath(sEntity.AssetPath);
+                    if (foundGuid.HasValue) guidToUse = foundGuid.Value;
+                }
+
                 registry.AddComponent(entity, new MeshComponent { 
                     Type = sEntity.MeshType != -1 ? (PrimitiveMeshType)sEntity.MeshType : PrimitiveMeshType.None,
-                    AssetPath = sEntity.AssetPath
+                    AssetGuid = guidToUse
                 });
             }
 

@@ -1,57 +1,8 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace ERus.Hub;
-
-public class GitHubAsset
-{
-    [JsonPropertyName("name")]
-    public string Name { get; set; } = string.Empty;
-
-    [JsonPropertyName("size")]
-    public long Size { get; set; }
-
-    [JsonPropertyName("browser_download_url")]
-    public string BrowserDownloadUrl { get; set; } = string.Empty;
-}
-
-public class GitHubRelease
-{
-    [JsonPropertyName("tag_name")]
-    public string TagName { get; set; } = string.Empty;
-
-    [JsonPropertyName("name")]
-    public string Name { get; set; } = string.Empty;
-
-    [JsonPropertyName("published_at")]
-    public DateTime PublishedAt { get; set; }
-
-    [JsonPropertyName("assets")]
-    public List<GitHubAsset> Assets { get; set; } = new List<GitHubAsset>();
-}
-
-public class ProjectData
-{
-    public string Name { get; set; } = string.Empty;
-    public string Path { get; set; } = string.Empty;
-    public string EngineVersion { get; set; } = string.Empty;
-    public DateTime LastModified { get; set; }
-}
-
-public class EngineInstall
-{
-    public string VersionName { get; set; } = string.Empty;
-    public string ExecutablePath { get; set; } = string.Empty;
-}
-
-public class HubConfig
-{
-    public List<ProjectData> Projects { get; set; } = new List<ProjectData>();
-    public List<EngineInstall> Installs { get; set; } = new List<EngineInstall>();
-}
 
 public static class ConfigManager
 {

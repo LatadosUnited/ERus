@@ -65,7 +65,7 @@ public class TransformCommand : IUndoCommand
         if (_netModule != null && _registry.HasComponent<NetworkIdentityComponent>(_entity))
         {
             var netId = _registry.GetComponent<NetworkIdentityComponent>(_entity).NetworkId;
-            _netModule.Replication?.SendTransform(netId, pos, rot, scale);
+
         }
     }
 }

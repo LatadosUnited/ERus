@@ -11,5 +11,6 @@ public enum PrimitiveMeshType
 public struct MeshComponent : IComponent
 {
     public PrimitiveMeshType Type;
-    public string? AssetPath;
+    public System.Guid AssetGuid;
+    public string? AssetHash;
 }

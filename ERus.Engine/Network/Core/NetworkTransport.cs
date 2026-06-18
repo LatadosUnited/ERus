@@ -21,7 +21,7 @@ public class NetworkTransport : INetEventListener
     {
         IsHost = true;
         MyUserId = 0; // O Host tem sempre a autoridade máxima (ID 0)
-        _netManager = new NetManager(this);
+        _netManager = new NetManager(this) { ChannelsCount = 2 };
         _netManager.Start(port);
         Console.WriteLine($"[Network] Host iniciado na porta {port}");
     }
@@ -30,7 +30,7 @@ public class NetworkTransport : INetEventListener
     {
         IsHost = false;
         MyUserId = new Random().Next(1, 1000); // Geramos ID de client aleatório
-        _netManager = new NetManager(this);
+        _netManager = new NetManager(this) { ChannelsCount = 2 };
         _netManager.Start();
         _netManager.Connect(ip, port, "ERusKeys");
         Console.WriteLine($"[Network] Client conectando a {ip}:{port}...");

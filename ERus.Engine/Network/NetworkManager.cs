@@ -1,6 +1,8 @@
 using System;
 using LiteNetLib;
 using ERus.Engine.Network.Core;
+using ERus.Engine.Network.Replication;
+using ERus.Engine.Network.Packets.Assets;
 
 namespace ERus.Engine.Network;
 
@@ -9,12 +11,16 @@ public class NetworkManager
     public NetworkTransport Transport { get; }
     public NetworkPacketDispatcher Dispatcher { get; }
     public AssetSyncManager AssetSync { get; }
+    public NetworkIdentityMap IdentityMap { get; }
+    public WorldStateSynchronizer WorldSynchronizer { get; }
 
-    public NetworkManager()
+    public NetworkManager(ERus.Engine.Core.Engine engine)
     {
         Transport = new NetworkTransport();
         Dispatcher = new NetworkPacketDispatcher(Transport);
         AssetSync = new AssetSyncManager(this);
+        IdentityMap = new NetworkIdentityMap();
+        WorldSynchronizer = new WorldStateSynchronizer(engine, Transport, Dispatcher, IdentityMap);
 
         Dispatcher.SubscribeReusable<AssetAnnouncePacket>((packet, peer) => AssetSync.OnAssetAnnouncedReceived(packet));
     }

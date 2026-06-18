@@ -32,24 +32,24 @@ public class NetworkPacketDispatcher
         _packetProcessor.SubscribeReusable<T, NetPeer>(onReceive);
     }
 
-    public void SendToPeer<T>(NetPeer peer, T packet, DeliveryMethod method) where T : class, new()
+    public void SendToPeer<T>(NetPeer peer, T packet, DeliveryMethod method, byte channelNumber = 0) where T : class, new()
     {
         var writer = new NetDataWriter();
         _packetProcessor.Write(writer, packet);
-        peer.Send(writer, method);
+        peer.Send(writer, channelNumber, method);
     }
 
-    public void SendToServer<T>(T packet, DeliveryMethod method) where T : class, new()
+    public void SendToServer<T>(T packet, DeliveryMethod method, byte channelNumber = 0) where T : class, new()
     {
         if (_transport.NetManager?.FirstPeer != null)
         {
             var writer = new NetDataWriter();
             _packetProcessor.Write(writer, packet);
-            _transport.NetManager.FirstPeer.Send(writer, method);
+            _transport.NetManager.FirstPeer.Send(writer, channelNumber, method);
         }
     }
 
-    public void SendToAllExcept<T>(T packet, NetPeer? excludedPeer, DeliveryMethod method) where T : class, new()
+    public void SendToAllExcept<T>(T packet, NetPeer? excludedPeer, DeliveryMethod method, byte channelNumber = 0) where T : class, new()
     {
         if (_transport.NetManager == null) return;
         
@@ -59,7 +59,7 @@ public class NetworkPacketDispatcher
         foreach (var peer in _transport.NetManager)
         {
             if (peer != excludedPeer)
-                peer.Send(writer, method);
+                peer.Send(writer, channelNumber, method);
         }
     }
 }

@@ -6,6 +6,10 @@ using ERus.Engine.Core;
 using ERus.Engine.ECS;
 using ERus.Engine.Network.Core;
 using ERus.Engine.Scripting;
+using ERus.Engine.Modules;
+using ERus.Engine.Network.Packets.State;
+using ERus.Engine.Network.Packets.Events;
+using System.Collections.Concurrent;
 
 namespace ERus.Engine.Network.Replication;
 
@@ -14,107 +18,116 @@ public class EntityReplicationSystem : BaseSystem
     private readonly NetworkTransport _transport;
     private readonly NetworkPacketDispatcher _dispatcher;
     private readonly ERus.Engine.Core.Engine _engine;
+    private readonly NetworkIdentityMap _identityMap;
 
     private uint _currentTick = 0;
     private Dictionary<int, uint> _lastEntityTicks = new Dictionary<int, uint>();
-    
-    // Mapa local de Rede para ECS
-    private readonly Dictionary<int, Entity> _networkToLocalMap = new Dictionary<int, Entity>();
-    private int _nextNetworkId = 1;
+    private ConcurrentQueue<(string hash, string path)> _completedDownloads = new();
 
-    public EntityReplicationSystem(Registry registry, ERus.Engine.Core.Engine engine, NetworkTransport transport, NetworkPacketDispatcher dispatcher) : base(registry)
+    public EntityReplicationSystem(Registry registry, ERus.Engine.Core.Engine engine, NetworkTransport transport, NetworkPacketDispatcher dispatcher, NetworkIdentityMap identityMap) : base(registry)
     {
         _engine = engine;
         _transport = transport;
         _dispatcher = dispatcher;
+        _identityMap = identityMap;
         
         RegisterPackets();
-        
-        _transport.OnPeerConnectedEvent += OnPeerConnected;
+
+        var networkModule = _engine.GetModule<NetworkModule>();
+        if (networkModule?.NetworkManager?.AssetSync != null)
+        {
+            networkModule.NetworkManager.AssetSync.OnAssetDownloaded += (hash, path) => 
+            {
+                _completedDownloads.Enqueue((hash, path));
+            };
+        }
     }
 
     public override void Update(double deltaTime)
     {
-        // Neste sistema podemos fazer checks periódicos para enviar transforms
-        // Por agora, o Envio é driven por eventos e Input, mas aqui é o lugar certo para 
-        // tick-based netcode (ex: varrer Transforms que estão dirty e enviar packets)
-    }
-
-    public int AssignNetworkId(Entity entity)
-    {
-        int netId = _nextNetworkId++;
-        _networkToLocalMap[netId] = entity;
-        
-        if (!Registry.HasComponent<NetworkIdentityComponent>(entity))
-            Registry.AddComponent(entity, new NetworkIdentityComponent { NetworkId = netId, LockUserId = -1 });
-            
-        return netId;
-    }
-
-    public void ClearLocalMap()
-    {
-        _networkToLocalMap.Clear();
-        _nextNetworkId = 1;
-    }
-
-    public int GetNetworkId(Entity entity)
-    {
-        if (Registry.HasComponent<NetworkIdentityComponent>(entity))
+        while (_completedDownloads.TryDequeue(out var downloaded))
         {
-            return Registry.GetComponent<NetworkIdentityComponent>(entity).NetworkId;
-        }
-        return -1;
-    }
-
-    private void OnPeerConnected(NetPeer peer)
-    {
-        if (_transport.IsHost)
-        {
-            // Enviar o estado completo do mundo para quem acabou de entrar
-            foreach (var kvp in _networkToLocalMap)
+            foreach (var entity in Registry.GetLivingEntities())
             {
-                int netId = kvp.Key;
-                Entity entity = kvp.Value;
-
-                string tag = "Entity";
-                if (Registry.HasComponent<TagComponent>(entity))
-                    tag = Registry.GetComponent<TagComponent>(entity).Name;
-
-                int meshType = 0;
                 if (Registry.HasComponent<MeshComponent>(entity))
-                    meshType = (int)Registry.GetComponent<MeshComponent>(entity).Type;
-
-                // 1. Spawna a entidade
-                SendSpawnToPeer(peer, netId, tag, meshType);
-
-                // 2. Sincroniza a posição
-                if (Registry.HasComponent<TransformComponent>(entity))
                 {
-                    var t = Registry.GetComponent<TransformComponent>(entity);
-                    SendTransformToPeer(peer, netId, t.Position, t.Rotation, t.Scale);
-                }
-
-                // 3. Sincroniza o estado de Lock
-                if (Registry.HasComponent<NetworkIdentityComponent>(entity))
-                {
-                    var netIdComp = Registry.GetComponent<NetworkIdentityComponent>(entity);
-                    if (netIdComp.LockUserId != -1)
+                    ref var mesh = ref Registry.GetComponent<MeshComponent>(entity);
+                    if (mesh.AssetHash == downloaded.hash)
                     {
-                        SendLockToPeer(peer, netId, netIdComp.LockUserId);
+                        var guid = _engine.AssetDatabase.GetGuidByPath(downloaded.path);
+                        if (guid.HasValue)
+                        {
+                            mesh.AssetGuid = guid.Value;
+                            mesh.Type = PrimitiveMeshType.None; // Remove Placeholder
+                        }
                     }
                 }
             }
         }
-        else
+
+        // Broadcaster de Movimentação (Dirty Flags)
+        if (_transport.IsHost)
         {
-            // Cliente conectou com sucesso: Limpa a cena local para receber os objetos do Host
-            var ecs = _engine.GetModule<ERus.Engine.Modules.ECSModule>();
-            if (ecs != null)
+            foreach (var entity in Registry.GetLivingEntities())
             {
-                ecs.ActiveScene.Clear();
+                if (Registry.HasComponent<TransformComponent>(entity) && Registry.HasComponent<NetworkIdentityComponent>(entity))
+                {
+                    ref var transform = ref Registry.GetComponent<TransformComponent>(entity);
+                    if (transform.IsDirty)
+                    {
+                        var netIdComp = Registry.GetComponent<NetworkIdentityComponent>(entity);
+                        SendTransform(netIdComp.NetworkId, transform.Position, transform.Rotation, transform.Scale);
+                        transform.IsDirty = false;
+                    }
+                }
             }
-            ClearLocalMap();
-            ConsoleLog.Log("[Rede] Cena local limpa para sincronização com o Host.");
+        }
+
+        // Interpolador de Movimento (Anti-Jitter)
+        float lerpSpeed = 15f;
+        foreach (var entity in Registry.GetLivingEntities())
+        {
+            if (Registry.HasComponent<TransformComponent>(entity) && Registry.HasComponent<NetworkInterpolationComponent>(entity))
+            {
+                ref var t = ref Registry.GetComponent<TransformComponent>(entity);
+                ref var interp = ref Registry.GetComponent<NetworkInterpolationComponent>(entity);
+                
+                bool changed = false;
+                if (interp.HasTargetPosition)
+                {
+                    t.Position += (interp.TargetPosition - t.Position) * ((float)deltaTime * lerpSpeed);
+                    if ((interp.TargetPosition - t.Position).Length < 0.005f)
+                    {
+                        t.Position = interp.TargetPosition;
+                        interp.HasTargetPosition = false;
+                    }
+                    changed = true;
+                }
+                
+                if (interp.HasTargetRotation)
+                {
+                    t.Rotation += (interp.TargetRotation - t.Rotation) * ((float)deltaTime * lerpSpeed);
+                    if ((interp.TargetRotation - t.Rotation).Length < 0.005f)
+                    {
+                        t.Rotation = interp.TargetRotation;
+                        interp.HasTargetRotation = false;
+                    }
+                    changed = true;
+                }
+                
+                if (interp.HasTargetScale)
+                {
+                    t.Scale += (interp.TargetScale - t.Scale) * ((float)deltaTime * lerpSpeed);
+                    if ((interp.TargetScale - t.Scale).Length < 0.005f)
+                    {
+                        t.Scale = interp.TargetScale;
+                        interp.HasTargetScale = false;
+                    }
+                    changed = true;
+                }
+
+                if (changed) t.IsDirty = false;
+            }
         }
     }
 
@@ -132,14 +145,30 @@ public class EntityReplicationSystem : BaseSystem
             if (_transport.IsHost) _dispatcher.SendToAllExcept(packet, peer, DeliveryMethod.Unreliable);
             
             // Aplicar no ECS
-            if (_networkToLocalMap.TryGetValue(packet.NetworkId, out var entity))
+            if (_identityMap.TryGetEntity(packet.NetworkId, out var entity))
             {
                 if (Registry.HasComponent<TransformComponent>(entity))
                 {
-                    ref var t = ref Registry.GetComponent<TransformComponent>(entity);
-                    if ((packet.UpdateFlags & 1) != 0) t.Position = new Vector3D<float>(packet.Position.X, packet.Position.Y, packet.Position.Z);
-                    if ((packet.UpdateFlags & 2) != 0) t.Rotation = new Vector3D<float>(packet.Rotation.X, packet.Rotation.Y, packet.Rotation.Z);
-                    if ((packet.UpdateFlags & 4) != 0) t.Scale = new Vector3D<float>(packet.Scale.X, packet.Scale.Y, packet.Scale.Z);
+                    if (!Registry.HasComponent<NetworkInterpolationComponent>(entity))
+                        Registry.AddComponent(entity, new NetworkInterpolationComponent());
+
+                    ref var interp = ref Registry.GetComponent<NetworkInterpolationComponent>(entity);
+                    
+                    if ((packet.UpdateFlags & 1) != 0) 
+                    {
+                        interp.TargetPosition = new Vector3D<float>(packet.Position.X, packet.Position.Y, packet.Position.Z);
+                        interp.HasTargetPosition = true;
+                    }
+                    if ((packet.UpdateFlags & 2) != 0) 
+                    {
+                        interp.TargetRotation = new Vector3D<float>(packet.Rotation.X, packet.Rotation.Y, packet.Rotation.Z);
+                        interp.HasTargetRotation = true;
+                    }
+                    if ((packet.UpdateFlags & 4) != 0) 
+                    {
+                        interp.TargetScale = new Vector3D<float>(packet.Scale.X, packet.Scale.Y, packet.Scale.Z);
+                        interp.HasTargetScale = true;
+                    }
                 }
             }
         });
@@ -154,10 +183,86 @@ public class EntityReplicationSystem : BaseSystem
             Registry.AddComponent(entity, new TransformComponent());
             Registry.AddComponent(entity, new TagComponent { Name = packet.Tag });
             
-            if (packet.MeshType > 0)
-                Registry.AddComponent(entity, new MeshComponent { Type = (PrimitiveMeshType)packet.MeshType });
+            MeshComponent meshComp = new MeshComponent();
+            if (!string.IsNullOrEmpty(packet.AssetHash))
+            {
+                meshComp.AssetHash = packet.AssetHash;
+                string? localPath = _engine.GetModule<NetworkModule>()?.NetworkManager?.AssetSync?.GetFilePathByHash(packet.AssetHash);
+                if (!string.IsNullOrEmpty(localPath))
+                {
+                    var guid = _engine.AssetDatabase.GetGuidByPath(localPath);
+                    if (guid.HasValue)
+                    {
+                        meshComp.AssetGuid = guid.Value;
+                        meshComp.Type = PrimitiveMeshType.None;
+                    }
+                    else
+                    {
+                        meshComp.Type = PrimitiveMeshType.Cube;
+                    }
+                }
+                else
+                {
+                    meshComp.Type = PrimitiveMeshType.Cube; // Placeholder
+                }
+            }
+            else if (packet.MeshType > 0)
+            {
+                meshComp.Type = (PrimitiveMeshType)packet.MeshType;
+            }
+            
+            if (meshComp.Type != PrimitiveMeshType.None || meshComp.AssetGuid != Guid.Empty)
+                Registry.AddComponent(entity, meshComp);
 
-            _networkToLocalMap[packet.NetworkId] = entity;
+            _identityMap.Map(packet.NetworkId, entity);
+        });
+
+        _dispatcher.SubscribeReusable<UpdateMeshPacket>((packet, peer) =>
+        {
+            if (_transport.IsHost) _dispatcher.SendToAllExcept(packet, peer, DeliveryMethod.ReliableOrdered);
+            
+            if (_identityMap.TryGetEntity(packet.NetworkId, out var entity))
+            {
+                MeshComponent meshComp = Registry.HasComponent<MeshComponent>(entity) 
+                                         ? Registry.GetComponent<MeshComponent>(entity) 
+                                         : new MeshComponent();
+
+                meshComp.AssetHash = packet.AssetHash;
+                
+                if (!string.IsNullOrEmpty(packet.AssetHash))
+                {
+                    string? localPath = _engine.GetModule<NetworkModule>()?.NetworkManager?.AssetSync?.GetFilePathByHash(packet.AssetHash);
+                    if (!string.IsNullOrEmpty(localPath))
+                    {
+                        var guid = _engine.AssetDatabase.GetGuidByPath(localPath);
+                        if (guid.HasValue)
+                        {
+                            meshComp.AssetGuid = guid.Value;
+                            meshComp.Type = PrimitiveMeshType.None;
+                        }
+                        else
+                        {
+                            meshComp.AssetGuid = Guid.Empty;
+                            meshComp.Type = PrimitiveMeshType.Cube; // Placeholder
+                        }
+                    }
+                    else
+                    {
+                        meshComp.AssetGuid = Guid.Empty;
+                        meshComp.Type = PrimitiveMeshType.Cube; // Placeholder
+                    }
+                }
+                else
+                {
+                    meshComp.Type = (PrimitiveMeshType)packet.MeshType;
+                    meshComp.AssetGuid = Guid.Empty;
+                }
+
+                if (Registry.HasComponent<MeshComponent>(entity))
+                    Registry.GetComponent<MeshComponent>(entity) = meshComp;
+                else
+                    Registry.AddComponent(entity, meshComp);
+            }
         });
 
         _dispatcher.SubscribeReusable<LockPacket>((packet, peer) =>
@@ -165,7 +270,7 @@ public class EntityReplicationSystem : BaseSystem
             if (_transport.IsHost) _dispatcher.SendToAllExcept(packet, peer, DeliveryMethod.ReliableOrdered);
             
             // Aplicar no ECS
-            if (_networkToLocalMap.TryGetValue(packet.NetworkId, out var entity))
+            if (_identityMap.TryGetEntity(packet.NetworkId, out var entity))
             {
                 if (Registry.HasComponent<NetworkIdentityComponent>(entity))
                 {
@@ -180,7 +285,7 @@ public class EntityReplicationSystem : BaseSystem
             if (_transport.IsHost) _dispatcher.SendToAllExcept(packet, peer, DeliveryMethod.ReliableOrdered);
             
             // Aplicar no ECS
-            if (_networkToLocalMap.TryGetValue(packet.NetworkId, out var entity))
+            if (_identityMap.TryGetEntity(packet.NetworkId, out var entity))
             {
                 if (Registry.HasComponent<NetworkIdentityComponent>(entity))
                 {
@@ -195,7 +300,7 @@ public class EntityReplicationSystem : BaseSystem
             if (_transport.IsHost) _dispatcher.SendToAllExcept(packet, peer, DeliveryMethod.ReliableOrdered);
             
             // Aplicar no ECS
-            if (_networkToLocalMap.TryGetValue(packet.NetworkId, out var entity))
+            if (_identityMap.TryGetEntity(packet.NetworkId, out var entity))
             {
                 if (Registry.HasComponent<TagComponent>(entity))
                 {
@@ -212,10 +317,10 @@ public class EntityReplicationSystem : BaseSystem
             _lastEntityTicks.Remove(packet.NetworkId);
             
             // Aplicar no ECS
-            if (_networkToLocalMap.TryGetValue(packet.NetworkId, out var entity))
+            if (_identityMap.TryGetEntity(packet.NetworkId, out var entity))
             {
                 Registry.DestroyEntity(entity);
-                _networkToLocalMap.Remove(packet.NetworkId);
+                _identityMap.Remove(packet.NetworkId);
             }
         });
 
@@ -251,8 +356,8 @@ public class EntityReplicationSystem : BaseSystem
     {
         _currentTick++;
         var packet = new TransformPacket { NetworkId = networkId, Position = position, Rotation = rotation, Scale = scale, Tick = _currentTick, UpdateFlags = updateFlags };
-        if (_transport.IsHost) _dispatcher.SendToAllExcept(packet, null, DeliveryMethod.Unreliable);
-        else _dispatcher.SendToServer(packet, DeliveryMethod.Unreliable);
+        if (_transport.IsHost) _dispatcher.SendToAllExcept(packet, null, DeliveryMethod.Sequenced, 1);
+        else _dispatcher.SendToServer(packet, DeliveryMethod.Sequenced, 1);
     }
 
     public void SendTransformToPeer(NetPeer peer, int networkId, Vector3D<float> position, Vector3D<float> rotation, Vector3D<float> scale, byte updateFlags = 7)
@@ -262,17 +367,24 @@ public class EntityReplicationSystem : BaseSystem
         _dispatcher.SendToPeer(peer, packet, DeliveryMethod.ReliableOrdered);
     }
 
-    public void SendSpawn(int networkId, string tag, int meshType)
+    public void SendSpawn(int networkId, string tag, int meshType, string assetHash = "")
     {
-        var packet = new SpawnEntityPacket { NetworkId = networkId, Tag = tag, MeshType = meshType };
+        var packet = new SpawnEntityPacket { NetworkId = networkId, Tag = tag, MeshType = meshType, AssetHash = assetHash };
         if (_transport.IsHost) _dispatcher.SendToAllExcept(packet, null, DeliveryMethod.ReliableOrdered);
         else _dispatcher.SendToServer(packet, DeliveryMethod.ReliableOrdered);
     }
 
-    public void SendSpawnToPeer(NetPeer peer, int networkId, string tag, int meshType)
+    public void SendSpawnToPeer(NetPeer peer, int networkId, string tag, int meshType, string assetHash = "")
     {
-        var packet = new SpawnEntityPacket { NetworkId = networkId, Tag = tag, MeshType = meshType };
+        var packet = new SpawnEntityPacket { NetworkId = networkId, Tag = tag, MeshType = meshType, AssetHash = assetHash };
         _dispatcher.SendToPeer(peer, packet, DeliveryMethod.ReliableOrdered);
+    }
+
+    public void SendUpdateMesh(int networkId, int meshType, string assetHash = "")
+    {
+        var packet = new UpdateMeshPacket { NetworkId = networkId, MeshType = meshType, AssetHash = assetHash };
+        if (_transport.IsHost) _dispatcher.SendToAllExcept(packet, null, DeliveryMethod.ReliableOrdered);
+        else _dispatcher.SendToServer(packet, DeliveryMethod.ReliableOrdered);
     }
 
     public void SendLockToPeer(NetPeer peer, int networkId, int userId)

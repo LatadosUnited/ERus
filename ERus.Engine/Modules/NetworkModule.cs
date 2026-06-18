@@ -30,12 +30,12 @@ public class NetworkModule : IEngineModule
     {
         _engine = engine;
         // Criação única do gerenciador em estado vazio (Offline)
-        NetworkManager = new NetworkManager();
+        NetworkManager = new NetworkManager(_engine);
 
         var ecs = _engine.GetModule<ECSModule>();
         if (ecs != null)
         {
-            var replicationSystem = new EntityReplicationSystem(ecs.ActiveScene.Registry, _engine, NetworkManager.Transport, NetworkManager.Dispatcher);
+            var replicationSystem = new EntityReplicationSystem(ecs.ActiveScene.Registry, _engine, NetworkManager.Transport, NetworkManager.Dispatcher, NetworkManager.IdentityMap);
             ecs.AddSystem(replicationSystem);
         }
     }
@@ -54,7 +54,7 @@ public class NetworkModule : IEngineModule
 
             if (replicationSystem != null && ecs != null)
             {
-                replicationSystem.ClearLocalMap();
+                NetworkManager.IdentityMap.ClearLocalMap();
                 
                 // Retrospectiva: Varre todas as entidades já existentes na cena e atribui um ID de Rede
                 var allEntities = ecs.ActiveScene.Registry.GetLivingEntities();
@@ -62,7 +62,7 @@ public class NetworkModule : IEngineModule
                 {
                     if (!ecs.ActiveScene.Registry.HasComponent<NetworkIdentityComponent>(e))
                     {
-                        replicationSystem.AssignNetworkId(e);
+                        NetworkManager.IdentityMap.AssignNetworkId(ecs.ActiveScene.Registry, e);
                     }
                 }
             }
@@ -86,7 +86,7 @@ public class NetworkModule : IEngineModule
             var replicationSystem = ecs?.GetSystem<EntityReplicationSystem>();
             if (replicationSystem != null)
             {
-                replicationSystem.ClearLocalMap();
+                NetworkManager.IdentityMap.ClearLocalMap();
             }
         }
         catch (Exception ex)
@@ -103,7 +103,7 @@ public class NetworkModule : IEngineModule
         var replicationSystem = ecs?.GetSystem<EntityReplicationSystem>();
         if (replicationSystem != null)
         {
-            replicationSystem.ClearLocalMap();
+            NetworkManager.IdentityMap.ClearLocalMap();
         }
         
         ConsoleLog.Log("[Rede] Desconectado.");

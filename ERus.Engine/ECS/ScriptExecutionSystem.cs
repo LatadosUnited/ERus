@@ -32,7 +32,8 @@ public class ScriptExecutionSystem : BaseSystem, IDisposable
         
         if (_scriptModule != null)
         {
-            _scriptModule.OnRecompiled += ReinstantiateAll;
+            _scriptModule.OnBeforeRecompile += OnBeforeRecompile;
+            _scriptModule.OnRecompiled += OnRecompiled;
         }
     }
 
@@ -40,7 +41,8 @@ public class ScriptExecutionSystem : BaseSystem, IDisposable
     {
         if (_scriptModule != null)
         {
-            _scriptModule.OnRecompiled -= ReinstantiateAll;
+            _scriptModule.OnBeforeRecompile -= OnBeforeRecompile;
+            _scriptModule.OnRecompiled -= OnRecompiled;
         }
         DestroyAllScripts();
     }
@@ -91,15 +93,20 @@ public class ScriptExecutionSystem : BaseSystem, IDisposable
         }
     }
 
-    /// <summary>
-    /// Força a reinstanciação dos scripts, usado após hot-reload do ScriptModule.
-    /// </summary>
-    public void ReinstantiateAll()
+    private void OnBeforeRecompile()
     {
         bool wasPlaying = _engine.State == EngineState.Play;
         if (wasPlaying)
         {
             DestroyAllScripts();
+        }
+    }
+
+    private void OnRecompiled()
+    {
+        bool wasPlaying = _engine.State == EngineState.Play;
+        if (wasPlaying)
+        {
             SyncScriptInstances();
         }
     }

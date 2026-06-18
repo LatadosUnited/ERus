@@ -34,11 +34,11 @@ public class HierarchyWindow : EditorWindow
         var entities = registry.GetLivingEntities();
         var io = ImGui.GetIO();
 
-        if (_controller.SelectedEntities.Count > 1)
+        if (EditorServices.Selection.SelectedEntities.Count > 1)
         {
             ImGui.TextColored(
                 new System.Numerics.Vector4(0.5f, 0.8f, 1.0f, 1.0f),
-                $"{_controller.SelectedEntities.Count} entidades selecionadas");
+                $"{EditorServices.Selection.SelectedEntities.Count} entidades selecionadas");
             ImGui.Separator();
         }
 
@@ -75,7 +75,7 @@ public class HierarchyWindow : EditorWindow
             // Clique na área vazia desseleção
             if (ImGui.IsItemClicked() && !io.KeyCtrl && !io.KeyShift)
             {
-                _controller.ClearSelection();
+                EditorServices.Selection.ClearSelection();
             }
 
             // Drop target na área vazia para remover parente
@@ -106,7 +106,7 @@ public class HierarchyWindow : EditorWindow
                     var netModule = _engine.GetModule<NetworkModule>();
                     if (netModule != null && netModule.NetworkManager?.IsHost == true)
                     {
-                        int netId = (netModule.Replication?.AssignNetworkId(newEntity) ?? -1);
+                        int netId = (netModule.NetworkManager?.IdentityMap.AssignNetworkId(registry, newEntity) ?? -1);
                         netModule.Replication?.SendSpawn(netId, "Empty Entity", 0);
                     }
                 }
@@ -123,7 +123,7 @@ public class HierarchyWindow : EditorWindow
                         var netModule = _engine.GetModule<NetworkModule>();
                         if (netModule != null && netModule.NetworkManager?.IsHost == true)
                         {
-                            int netId = (netModule.Replication?.AssignNetworkId(newEntity) ?? -1);
+                            int netId = (netModule.NetworkManager?.IdentityMap.AssignNetworkId(registry, newEntity) ?? -1);
                             netModule.Replication?.SendSpawn(netId, "Cube", (int)PrimitiveMeshType.Cube);
                         }
                     }
@@ -140,7 +140,7 @@ public class HierarchyWindow : EditorWindow
                     var netModule = _engine.GetModule<NetworkModule>();
                     if (netModule != null && netModule.NetworkManager?.IsHost == true)
                     {
-                        int netId = (netModule.Replication?.AssignNetworkId(newEntity) ?? -1);
+                        int netId = (netModule.NetworkManager?.IdentityMap.AssignNetworkId(registry, newEntity) ?? -1);
                         netModule.Replication?.SendSpawn(netId, "Camera", -1);
                     }
                 }
@@ -164,7 +164,7 @@ public class HierarchyWindow : EditorWindow
         else if (registry.HasComponent<MeshComponent>(entity))
             icon = FontAwesome.Cube;
 
-        bool isSelected = _controller.SelectedEntities.Contains(entity);
+        bool isSelected = EditorServices.Selection.SelectedEntities.Contains(entity);
         bool hasChildren = false;
 
         if (registry.HasComponent<RelationshipComponent>(entity))
@@ -184,11 +184,11 @@ public class HierarchyWindow : EditorWindow
         if (ImGui.IsItemClicked() && !ImGui.IsItemToggledOpen())
         {
             if (io.KeyCtrl)
-                _controller.ToggleSelection(entity);
+                EditorServices.Selection.ToggleSelection(entity);
             else if (io.KeyShift && _lastClickedEntity.HasValue)
-                _controller.ToggleSelection(entity);
+                EditorServices.Selection.ToggleSelection(entity);
             else
-                _controller.SelectedEntity = entity;
+                EditorServices.Selection.SelectedEntity = entity;
 
             _lastClickedEntity = entity;
         }
@@ -209,7 +209,7 @@ public class HierarchyWindow : EditorWindow
                     netModule.Replication?.SendDestroy(netId);
                 }
                 registry.DestroyEntity(entity);
-                _controller.SelectedEntities.Remove(entity);
+                EditorServices.Selection.SelectedEntities.Remove(entity);
             }
             ImGui.EndPopup();
         }

@@ -29,6 +29,9 @@ public class HubUI
     private bool _isLoadingReleases = false;
     private float _downloadProgress = -1f; // -1 indicates not downloading
     private string _downloadingVersion = "";
+    
+    // Config state
+    private string _installDirectoryPath = "";
 
     public HubUI()
     {
@@ -37,6 +40,10 @@ public class HubUI
         {
             _selectedEngineVersion = _config.Installs[0].VersionName;
         }
+
+        _installDirectoryPath = string.IsNullOrEmpty(_config.DefaultInstallDirectory) 
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ERusHub", "Engines")
+            : _config.DefaultInstallDirectory;
 
         _releaseManager = new GitHubReleaseManager();
         _isLoadingReleases = true;
@@ -117,6 +124,28 @@ public class HubUI
     private void DrawInstallsTab()
     {
         ImGui.Spacing();
+        ImGui.Text("Engine Installation Directory:");
+        ImGui.InputText("##InstallDir", ref _installDirectoryPath, 256);
+        ImGui.SameLine();
+        if (ImGui.Button("..."))
+        {
+            var dialogResult = NativeFileDialogSharp.Dialog.FolderPicker();
+            if (dialogResult.IsOk)
+            {
+                _installDirectoryPath = dialogResult.Path;
+            }
+        }
+        ImGui.SameLine();
+        if (ImGui.Button("Save Path"))
+        {
+            _config.DefaultInstallDirectory = _installDirectoryPath;
+            ConfigManager.Save(_config);
+        }
+
+        ImGui.Spacing();
+        ImGui.Separator();
+        ImGui.Spacing();
+
         if (ImGui.Button("Add Local Engine", new Vector2(150, 30)))
         {
             _triggerAddEngineModal = true;

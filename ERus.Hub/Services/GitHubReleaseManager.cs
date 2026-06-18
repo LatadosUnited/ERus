@@ -44,7 +44,12 @@ public class GitHubReleaseManager
     {
         string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         string downloadDir = Path.Combine(appData, "ERusHub", "Downloads");
-        string extractDir = Path.Combine(appData, "ERusHub", "Engines", release.TagName);
+        
+        string baseExtractDir = string.IsNullOrEmpty(config.DefaultInstallDirectory) 
+            ? Path.Combine(appData, "ERusHub", "Engines") 
+            : config.DefaultInstallDirectory;
+            
+        string extractDir = Path.Combine(baseExtractDir, release.TagName);
 
         if (!Directory.Exists(downloadDir)) Directory.CreateDirectory(downloadDir);
         if (!Directory.Exists(extractDir)) Directory.CreateDirectory(extractDir);

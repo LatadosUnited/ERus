@@ -57,11 +57,44 @@ public class ProjectWindow : EditorWindow
                     _currentPath = dir;
                 }
             }
+            
+            if (ImGui.BeginDragDropTarget())
+            {
+                var payload = ImGui.AcceptDragDropPayload("ASSET_PATH");
+                unsafe
+                {
+                    if (payload.NativePtr != null)
+                    {
+                        string sourceFile = ERus.Editor.EditorUI.Managers.DragDropState.DraggedPayload;
+                        if (File.Exists(sourceFile))
+                        {
+                            string fileName = Path.GetFileName(sourceFile);
+                            string destFile = Path.Combine(dir, fileName);
+                            if (sourceFile != destFile)
+                            {
+                                File.Move(sourceFile, destFile);
+                                ERus.Engine.Scripting.ConsoleLog.Log($"[Project] Arquivo movido: {fileName} -> {dirName}");
+                                
+                                string sourceMeta = sourceFile + ".meta";
+                                if (File.Exists(sourceMeta))
+                                {
+                                    File.Move(sourceMeta, destFile + ".meta");
+                                }
+                                
+                                _engine.AssetDatabase.Scan();
+                            }
+                        }
+                    }
+                }
+                ImGui.EndDragDropTarget();
+            }
         }
 
         var files = Directory.GetFiles(_currentPath);
         foreach (var file in files)
         {
+            if (file.EndsWith(".meta", StringComparison.OrdinalIgnoreCase)) continue;
+            
             var fileName = Path.GetFileName(file);
             bool isSelected = _selectedFile == file;
             if (ImGui.Selectable($"      {fileName}", isSelected, ImGuiSelectableFlags.AllowDoubleClick))
@@ -80,8 +113,7 @@ public class ProjectWindow : EditorWindow
             
             if (ImGui.BeginDragDropSource())
             {
-                string relPath = file.Replace(_basePath, "Assets").Replace('\\', '/');
-                ERus.Editor.EditorUI.Managers.DragDropState.DraggedPayload = relPath;
+                ERus.Editor.EditorUI.Managers.DragDropState.DraggedPayload = file; // Usar caminho absoluto para mover
                 ImGui.SetDragDropPayload("ASSET_PATH", IntPtr.Zero, 0);
                 ImGui.Text(fileName);
                 ImGui.EndDragDropSource();
@@ -100,6 +132,10 @@ public class ProjectWindow : EditorWindow
                 if (ImGui.MenuItem("Delete File"))
                 {
                     File.Delete(file);
+                    string metaFile = file + ".meta";
+                    if (File.Exists(metaFile)) File.Delete(metaFile);
+                    
+                    _engine.AssetDatabase.Scan();
                     ERus.Engine.Scripting.ConsoleLog.Log($"[Project] Arquivo deletado: {file}");
                 }
                 ImGui.PopStyleColor();
@@ -119,6 +155,10 @@ public class ProjectWindow : EditorWindow
             if (File.Exists(_selectedFile))
             {
                 File.Delete(_selectedFile);
+                string metaFile = _selectedFile + ".meta";
+                if (File.Exists(metaFile)) File.Delete(metaFile);
+                
+                _engine.AssetDatabase.Scan();
                 ERus.Engine.Scripting.ConsoleLog.Log($"[Project] Arquivo deletado via teclado: {_selectedFile}");
                 _selectedFile = null;
             }
@@ -188,10 +228,16 @@ public class ProjectWindow : EditorWindow
                         if (_selectedFile != newPath)
                         {
                             File.Move(_selectedFile, newPath);
+                            string oldMeta = _selectedFile + ".meta";
+                            if (File.Exists(oldMeta))
+                            {
+                                File.Move(oldMeta, newPath + ".meta");
+                            }
+
+                            _engine.AssetDatabase.Scan();
                             ERus.Engine.Scripting.ConsoleLog.Log($"[Project] Arquivo renomeado de {Path.GetFileName(_selectedFile)} para {_renameItemName}");
                             _selectedFile = newPath;
-                            if (File.Exists(newPath))
-                                _engine.GetModule<ERus.Engine.Modules.NetworkModule>()?.NetworkManager?.AssetSync?.AnnounceAsset(newPath);
+                            _ = _engine.GetModule<ERus.Engine.Modules.NetworkModule>()?.NetworkManager?.AssetSync?.AnnounceAssetAsync(newPath);
                         }
                     }
                     catch (Exception ex)
@@ -243,7 +289,7 @@ public class {className} : EntityScript
 }}";
                 File.WriteAllText(fullPath, template);
                 ERus.Engine.Scripting.ConsoleLog.Log($"[Project] Script criado: {fullPath}");
-                _engine.GetModule<ERus.Engine.Modules.NetworkModule>()?.NetworkManager?.AssetSync?.AnnounceAsset(fullPath);
+                _ = _engine.GetModule<ERus.Engine.Modules.NetworkModule>()?.NetworkManager?.AssetSync?.AnnounceAssetAsync(fullPath);
             }
             else if (_createMode == CreateMode.Scene)
             {
@@ -251,7 +297,7 @@ public class {className} : EntityScript
                 string template = "{ \"Entities\": [] }";
                 File.WriteAllText(fullPath, template);
                 ERus.Engine.Scripting.ConsoleLog.Log($"[Project] Cena criada: {fullPath}");
-                _engine.GetModule<ERus.Engine.Modules.NetworkModule>()?.NetworkManager?.AssetSync?.AnnounceAsset(fullPath);
+                _ = _engine.GetModule<ERus.Engine.Modules.NetworkModule>()?.NetworkManager?.AssetSync?.AnnounceAssetAsync(fullPath);
             }
             else if (_createMode == CreateMode.InputProfile)
             {
@@ -267,7 +313,7 @@ public class {className} : EntityScript
 }";
                 File.WriteAllText(fullPath, template);
                 ERus.Engine.Scripting.ConsoleLog.Log($"[Project] Input Map criado: {fullPath}");
-                _engine.GetModule<ERus.Engine.Modules.NetworkModule>()?.NetworkManager?.AssetSync?.AnnounceAsset(fullPath);
+                _ = _engine.GetModule<ERus.Engine.Modules.NetworkModule>()?.NetworkManager?.AssetSync?.AnnounceAssetAsync(fullPath);
             }
         }
         catch (Exception ex)

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.Loader;
 using ERus.Engine.Core;
 using ERus.Engine.Scripting;
@@ -26,6 +27,7 @@ public class ScriptModule : IEngineModule
     private FileSystemWatcher? _watcher;
     private bool _needsRecompile = false;
     private readonly object _recompileLock = new();
+    private readonly List<WeakReference> _unloadingContexts = new();
 
     public string ScriptsPath { get; private set; } = "";
 
@@ -33,6 +35,11 @@ public class ScriptModule : IEngineModule
     /// Evento disparado quando os scripts são recompilados com sucesso (útil para sistemas que instanciam scripts).
     /// </summary>
     public event Action? OnRecompiled;
+
+    /// <summary>
+    /// Evento disparado ANTES da recompilação e do unload. Útil para limpar instâncias que seguram o assembly antigo.
+    /// </summary>
+    public event Action? OnBeforeRecompile;
 
     public void Initialize(Core.Engine engine)
     {
@@ -61,6 +68,16 @@ public class ScriptModule : IEngineModule
                 HandleRecompile();
             }
         }
+
+        // Monitorar ALCs antigos
+        for (int i = _unloadingContexts.Count - 1; i >= 0; i--)
+        {
+            if (!_unloadingContexts[i].IsAlive)
+            {
+                _unloadingContexts.RemoveAt(i);
+                ConsoleLog.Log("AssemblyLoadContext antigo coletado com sucesso pelo GC.");
+            }
+        }
     }
 
     public void Render(double deltaTime)
@@ -70,7 +87,7 @@ public class ScriptModule : IEngineModule
     public void Dispose()
     {
         _watcher?.Dispose();
-        UnloadCurrentAssembly();
+        UnloadAndForceGC();
         ConsoleLog.Log("ScriptModule desligado.");
     }
 
@@ -108,13 +125,21 @@ public class ScriptModule : IEngineModule
         return Directory.GetFiles(ScriptsPath, "*.cs", SearchOption.AllDirectories);
     }
 
-    private void UnloadCurrentAssembly()
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private WeakReference UnloadAndForceGC()
     {
+        WeakReference weakRef = new WeakReference(null);
         if (_currentLoadContext != null)
         {
+            weakRef = new WeakReference(_currentLoadContext);
             _currentLoadContext.Unload();
             _currentLoadContext = null;
         }
+        
+        // Limpar o cache de reflexão antigo para não segurar o ALC
+        _compilationResult = null;
+
+        return weakRef;
     }
 
     private void SetupWatcher()
@@ -151,7 +176,26 @@ public class ScriptModule : IEngineModule
     {
         ConsoleLog.Log("Mudança detectada nos scripts. Recompilando...");
 
-        UnloadCurrentAssembly();
+        // 1. Avisar todos para soltarem referências
+        OnBeforeRecompile?.Invoke();
+
+        // 2. Descarregar o contexto de forma isolada e obter referência fraca
+        var weakRef = UnloadAndForceGC();
+
+        // 3. Forçar GC para limpar objetos e finalmente o contexto
+        for (int i = 0; i < 2; i++)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+        }
+
+        if (weakRef.IsAlive)
+        {
+            _unloadingContexts.Add(weakRef);
+            ConsoleLog.Warn("ALC não foi coletado imediatamente. Adicionado à lista de monitoramento.");
+        }
+
+        // 4. Compilar novo assembly
         CompileAll();
 
         if (_compilationResult?.Success == true)

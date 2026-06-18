@@ -16,6 +16,11 @@ public class Registry
         return _livingEntities.AsReadOnly();
     }
 
+    public bool IsAlive(Entity entity)
+    {
+        return _livingEntities.Contains(entity);
+    }
+
     public Entity CreateEntity()
     {
         int id;

@@ -22,9 +22,14 @@ public enum EngineState
 public class Engine : IDisposable
 {
     private readonly List<IEngineModule> _modules = new List<IEngineModule>();
+    public static Engine Instance { get; private set; }
     
     public Engine()
     {
+        Instance = this;
+        string assetsDir = System.IO.Path.Combine(System.Environment.CurrentDirectory, "Assets");
+        AssetDatabase = new ERus.Engine.Assets.AssetDatabase(assetsDir);
+        AssetDatabase.Scan();
     }
     
     /// <summary>
@@ -56,6 +61,11 @@ public class Engine : IDisposable
     /// Contexto primário de input.
     /// </summary>
     public IInputContext Input { get; private set; }
+
+    /// <summary>
+    /// Banco de dados global de Assets (.meta, GUIDs, Hashes)
+    /// </summary>
+    public ERus.Engine.Assets.AssetDatabase AssetDatabase { get; private set; }
 
     /// <summary>
     /// Adiciona um novo subsistema à esteira de execução da Engine.

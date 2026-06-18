@@ -499,7 +499,7 @@ public class SceneRenderer : IDisposable
             var translation = Matrix4x4.CreateTranslation(transform.Position.X, transform.Position.Y, transform.Position.Z);
             var modelMatrix = scale * rot * translation;
 
-            if (!string.IsNullOrEmpty(mesh.AssetPath))
+            if (mesh.AssetGuid != System.Guid.Empty)
             {
                 // Usar Asset Shader
                 _gl.UseProgram(_assetShaderProgram);
@@ -509,11 +509,14 @@ public class SceneRenderer : IDisposable
                 _gl.UniformMatrix4(_assetModelLoc, 1, false, (float*)&modelMatrix);
 
                 var assetManager = ERus.Engine.Assets.AssetManager.Get();
-                var model = assetManager.LoadModel(mesh.AssetPath);
-                
-                if (model != null)
+                string? path = ERus.Engine.Core.Engine.Instance.AssetDatabase.GetPathByGuid(mesh.AssetGuid);
+                if (!string.IsNullOrEmpty(path))
                 {
-                    model.Draw(_assetShaderProgram);
+                    var model = assetManager.LoadModel(path);
+                    if (model != null)
+                    {
+                        model.Draw(_assetShaderProgram);
+                    }
                 }
 
                 // Restaurar Basic Shader para os próximos objetos

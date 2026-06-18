@@ -82,9 +82,9 @@ public class SceneViewWindow : EditorWindow
             if (sceneAspect == 0) sceneAspect = 1.0f;
 
             bool isLockedByOther = false;
-            if (_controller.SelectedEntity.HasValue)
+            if (EditorServices.Selection.SelectedEntity.HasValue)
             {
-                var entity = _controller.SelectedEntity.Value;
+                var entity = EditorServices.Selection.SelectedEntity.Value;
                 if (registry.HasComponent<NetworkIdentityComponent>(entity))
                 {
                     var netComp = registry.GetComponent<NetworkIdentityComponent>(entity);
@@ -93,7 +93,7 @@ public class SceneViewWindow : EditorWindow
                 }
             }
 
-            _sceneRenderer.Draw(registry, _camera.GetViewMatrix(), sceneAspect, _controller.SelectedEntity, isLockedByOther, true);
+            _sceneRenderer.Draw(registry, _camera.GetViewMatrix(), sceneAspect, EditorServices.Selection.SelectedEntity, isLockedByOther, true);
             
             _sceneFramebuffer.Unbind(_engine.CurrentSize);
         }
@@ -127,9 +127,9 @@ public class SceneViewWindow : EditorWindow
         bool snapping = io.KeyCtrl; // Ctrl segura = snapping ativo
 
         // --- GIZMO (entidade selecionada) ---
-        if (_controller.SelectedEntity.HasValue && !rightMouseDown)
+        if (EditorServices.Selection.SelectedEntity.HasValue && !rightMouseDown)
         {
-            var entity = _controller.SelectedEntity.Value;
+            var entity = EditorServices.Selection.SelectedEntity.Value;
 
             if (registry.HasComponent<TransformComponent>(entity))
             {
@@ -195,9 +195,6 @@ public class SceneViewWindow : EditorWindow
 
                         if (_gizmo.UpdateDrag(rayOrigin, rayDir, ref t, axes, _currentMode, snapping))
                         {
-                            // Replicar pela rede em tempo real
-                            if (netModule != null && netId != -1)
-                                netModule.Replication?.SendTransform(netId, t.Position, t.Rotation, t.Scale);
                         }
                     }
 
@@ -321,13 +318,13 @@ public class SceneViewWindow : EditorWindow
         if (bestHit.HasValue)
         {
             if (additive)
-                _controller.ToggleSelection(bestHit.Value);
+                EditorServices.Selection.ToggleSelection(bestHit.Value);
             else
-                _controller.SelectedEntity = bestHit.Value;
+                EditorServices.Selection.SelectedEntity = bestHit.Value;
         }
         else if (!additive)
         {
-            _controller.ClearSelection();
+            EditorServices.Selection.ClearSelection();
         }
     }
 }

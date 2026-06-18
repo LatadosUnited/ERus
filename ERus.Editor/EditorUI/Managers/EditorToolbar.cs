@@ -36,7 +36,7 @@ public class EditorToolbar
                     var scene = _engine.GetModule<ERus.Engine.Modules.ECSModule>().ActiveScene;
                     string path = System.IO.Path.GetFullPath(System.IO.Path.Combine(System.Environment.CurrentDirectory, "Assets", "Scene1.scene"));
                     ERus.Engine.ECS.SceneSerializer.SaveScene(path, scene);
-                    _engine.GetModule<ERus.Engine.Modules.NetworkModule>()?.NetworkManager?.AssetSync?.AnnounceAsset(path);
+                    _ = _engine.GetModule<ERus.Engine.Modules.NetworkModule>()?.NetworkManager?.AssetSync?.AnnounceAssetAsync(path);
                 }
                 if (ImGui.MenuItem("Load Scene (Scene1.scene)"))
                 {
@@ -150,7 +150,7 @@ public class EditorToolbar
                 string path = System.IO.Path.GetFullPath(System.IO.Path.Combine(System.Environment.CurrentDirectory, _tempScenePath));
                 var scene = _engine.GetModule<ERus.Engine.Modules.ECSModule>().ActiveScene;
                 ERus.Engine.ECS.SceneSerializer.LoadScene(path, scene);
-                _controller.ClearSelection();
+                EditorServices.Selection.ClearSelection();
             }
         }
 
