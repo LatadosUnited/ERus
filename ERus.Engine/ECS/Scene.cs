@@ -23,6 +23,7 @@ public class Scene
         Registry.RegisterComponent<RigidBodyComponent>();
         Registry.RegisterComponent<ColliderComponent>();
         Registry.RegisterComponent<JointComponent>();
+        Registry.RegisterComponent<AnimatorComponent>();
     }
 
     public void Clear()

@@ -14,6 +14,7 @@ public class SerializedScript
 
 public class SerializedEntity
 {
+    public int ParentIndex { get; set; } = -1;
     public int NetworkId { get; set; } = -1;
     public string Tag { get; set; } = "Entity";
     
@@ -51,62 +52,133 @@ public class SceneData
 
 public static class SceneSerializer
 {
+    private static SerializedEntity SerializeSingleEntity(Entity entity, Registry registry)
+    {
+        var sEntity = new SerializedEntity();
+        
+        if (registry.HasComponent<NetworkIdentityComponent>(entity))
+            sEntity.NetworkId = registry.GetComponent<NetworkIdentityComponent>(entity).NetworkId;
+
+        if (registry.HasComponent<TagComponent>(entity))
+            sEntity.Tag = registry.GetComponent<TagComponent>(entity).Name;
+
+        if (registry.HasComponent<TransformComponent>(entity))
+        {
+            var t = registry.GetComponent<TransformComponent>(entity);
+            sEntity.PosX = t.Position.X; sEntity.PosY = t.Position.Y; sEntity.PosZ = t.Position.Z;
+            sEntity.RotX = t.Rotation.X; sEntity.RotY = t.Rotation.Y; sEntity.RotZ = t.Rotation.Z;
+            sEntity.ScaX = t.Scale.X;    sEntity.ScaY = t.Scale.Y;    sEntity.ScaZ = t.Scale.Z;
+        }
+
+        if (registry.HasComponent<MeshComponent>(entity))
+        {
+            var mesh = registry.GetComponent<MeshComponent>(entity);
+            sEntity.MeshType = (int)mesh.Type;
+            sEntity.AssetGuid = mesh.AssetGuid;
+        }
+
+        if (registry.HasComponent<CameraComponent>(entity))
+        {
+            var cam = registry.GetComponent<CameraComponent>(entity);
+            sEntity.HasCamera = true;
+            sEntity.CamFov = cam.FieldOfView;
+            sEntity.CamIsPrimary = cam.IsPrimary;
+            sEntity.CamNear = cam.NearClip;
+            sEntity.CamFar = cam.FarClip;
+        }
+
+        if (registry.HasComponent<ScriptComponent>(entity))
+        {
+            var scriptComp = registry.GetComponent<ScriptComponent>(entity);
+            foreach (var scriptData in scriptComp.Scripts)
+            {
+                var serializedScript = new SerializedScript { ScriptType = scriptData.ScriptTypeName ?? "" };
+                foreach(var kvp in scriptData.FieldValues)
+                    serializedScript.ScriptFields[kvp.Key] = kvp.Value;
+                sEntity.Scripts.Add(serializedScript);
+            }
+        }
+
+        return sEntity;
+    }
+
+    private static void DeserializeSingleEntity(Entity entity, SerializedEntity sEntity, Registry registry)
+    {
+        if (sEntity.NetworkId != -1)
+            registry.AddComponent(entity, new NetworkIdentityComponent { NetworkId = sEntity.NetworkId, LockUserId = -1 });
+
+        registry.AddComponent(entity, new TagComponent { Name = sEntity.Tag });
+
+        var t = new TransformComponent
+        {
+            Position = new Vector3D<float>(sEntity.PosX, sEntity.PosY, sEntity.PosZ),
+            Rotation = new Vector3D<float>(sEntity.RotX, sEntity.RotY, sEntity.RotZ),
+            Scale = new Vector3D<float>(sEntity.ScaX, sEntity.ScaY, sEntity.ScaZ)
+        };
+        registry.AddComponent(entity, t);
+
+        if (sEntity.MeshType != -1 || !string.IsNullOrEmpty(sEntity.AssetPath) || sEntity.AssetGuid != Guid.Empty)
+        {
+            Guid guidToUse = sEntity.AssetGuid;
+            if (guidToUse == Guid.Empty && !string.IsNullOrEmpty(sEntity.AssetPath))
+            {
+                var foundGuid = ERus.Engine.Core.Engine.Instance.AssetDatabase.GetGuidByPath(sEntity.AssetPath);
+                if (foundGuid.HasValue) guidToUse = foundGuid.Value;
+            }
+
+            registry.AddComponent(entity, new MeshComponent { 
+                Type = sEntity.MeshType != -1 ? (PrimitiveMeshType)sEntity.MeshType : PrimitiveMeshType.None,
+                AssetGuid = guidToUse
+            });
+        }
+
+        if (sEntity.HasCamera)
+        {
+            registry.AddComponent(entity, new CameraComponent 
+            { 
+                FieldOfView = sEntity.CamFov,
+                IsPrimary = sEntity.CamIsPrimary,
+                NearClip = sEntity.CamNear,
+                FarClip = sEntity.CamFar
+            });
+        }
+
+        if (sEntity.Scripts != null && sEntity.Scripts.Count > 0)
+        {
+            var scriptComp = new ScriptComponent();
+            foreach (var sScript in sEntity.Scripts)
+            {
+                if (string.IsNullOrEmpty(sScript.ScriptType)) continue;
+
+                var scriptData = new ScriptData { ScriptTypeName = sScript.ScriptType };
+                foreach(var kvp in sScript.ScriptFields)
+                    scriptData.FieldValues[kvp.Key] = kvp.Value;
+                scriptComp.Scripts.Add(scriptData);
+            }
+            if (scriptComp.Scripts.Count > 0)
+                registry.AddComponent(entity, scriptComp);
+        }
+    }
+
     public static void SaveScene(string filepath, Scene scene)
     {
         var registry = scene.Registry;
         var sceneData = new SceneData();
+        var entities = new List<Entity>(registry.GetLivingEntities());
+        
+        var entityToIndex = new Dictionary<int, int>();
+        for (int i = 0; i < entities.Count; i++)
+            entityToIndex[entities[i].Id] = i;
 
-        foreach (var entity in registry.GetLivingEntities())
+        foreach (var entity in entities)
         {
-            var sEntity = new SerializedEntity();
+            var sEntity = SerializeSingleEntity(entity, registry);
             
-            if (registry.HasComponent<NetworkIdentityComponent>(entity))
+            if (registry.HasComponent<RelationshipComponent>(entity))
             {
-                sEntity.NetworkId = registry.GetComponent<NetworkIdentityComponent>(entity).NetworkId;
-            }
-
-            if (registry.HasComponent<TagComponent>(entity))
-            {
-                sEntity.Tag = registry.GetComponent<TagComponent>(entity).Name;
-            }
-
-            if (registry.HasComponent<TransformComponent>(entity))
-            {
-                var t = registry.GetComponent<TransformComponent>(entity);
-                sEntity.PosX = t.Position.X; sEntity.PosY = t.Position.Y; sEntity.PosZ = t.Position.Z;
-                sEntity.RotX = t.Rotation.X; sEntity.RotY = t.Rotation.Y; sEntity.RotZ = t.Rotation.Z;
-                sEntity.ScaX = t.Scale.X;    sEntity.ScaY = t.Scale.Y;    sEntity.ScaZ = t.Scale.Z;
-            }
-
-            if (registry.HasComponent<MeshComponent>(entity))
-            {
-                var mesh = registry.GetComponent<MeshComponent>(entity);
-                sEntity.MeshType = (int)mesh.Type;
-                sEntity.AssetGuid = mesh.AssetGuid;
-            }
-
-            if (registry.HasComponent<CameraComponent>(entity))
-            {
-                var cam = registry.GetComponent<CameraComponent>(entity);
-                sEntity.HasCamera = true;
-                sEntity.CamFov = cam.FieldOfView;
-                sEntity.CamIsPrimary = cam.IsPrimary;
-                sEntity.CamNear = cam.NearClip;
-                sEntity.CamFar = cam.FarClip;
-            }
-
-            if (registry.HasComponent<ScriptComponent>(entity))
-            {
-                var scriptComp = registry.GetComponent<ScriptComponent>(entity);
-                foreach (var scriptData in scriptComp.Scripts)
-                {
-                    var serializedScript = new SerializedScript { ScriptType = scriptData.ScriptTypeName ?? "" };
-                    foreach(var kvp in scriptData.FieldValues)
-                    {
-                        serializedScript.ScriptFields[kvp.Key] = kvp.Value;
-                    }
-                    sEntity.Scripts.Add(serializedScript);
-                }
+                var rel = registry.GetComponent<RelationshipComponent>(entity);
+                if (rel.Parent.HasValue && entityToIndex.TryGetValue(rel.Parent.Value.Id, out int parentIndex))
+                    sEntity.ParentIndex = parentIndex;
             }
 
             sceneData.Entities.Add(sEntity);
@@ -125,87 +197,116 @@ public static class SceneSerializer
 
         string json = File.ReadAllText(filepath);
         SceneData? sceneData = null;
-        try
-        {
-            sceneData = JsonSerializer.Deserialize<SceneData>(json);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[SceneSerializer] Erro ao ler cena {filepath}: {ex.Message}");
-            return;
-        }
+        try { sceneData = JsonSerializer.Deserialize<SceneData>(json); }
+        catch (Exception ex) { Console.WriteLine($"[SceneSerializer] Erro ao ler cena {filepath}: {ex.Message}"); return; }
         
         if (sceneData == null) return;
 
         registry.Clear();
 
+        var createdEntities = new List<Entity>();
         foreach (var sEntity in sceneData.Entities)
         {
             var entity = registry.CreateEntity();
+            DeserializeSingleEntity(entity, sEntity, registry);
+            createdEntities.Add(entity);
+        }
 
-            if (sEntity.NetworkId != -1)
+        for (int i = 0; i < sceneData.Entities.Count; i++)
+        {
+            var sEntity = sceneData.Entities[i];
+            if (sEntity.ParentIndex >= 0 && sEntity.ParentIndex < createdEntities.Count)
             {
-                registry.AddComponent(entity, new NetworkIdentityComponent { NetworkId = sEntity.NetworkId, LockUserId = -1 });
-            }
-
-            registry.AddComponent(entity, new TagComponent { Name = sEntity.Tag });
-
-            var t = new TransformComponent
-            {
-                Position = new Vector3D<float>(sEntity.PosX, sEntity.PosY, sEntity.PosZ),
-                Rotation = new Vector3D<float>(sEntity.RotX, sEntity.RotY, sEntity.RotZ),
-                Scale = new Vector3D<float>(sEntity.ScaX, sEntity.ScaY, sEntity.ScaZ)
-            };
-            registry.AddComponent(entity, t);
-
-            if (sEntity.MeshType != -1 || !string.IsNullOrEmpty(sEntity.AssetPath) || sEntity.AssetGuid != Guid.Empty)
-            {
-                Guid guidToUse = sEntity.AssetGuid;
-                if (guidToUse == Guid.Empty && !string.IsNullOrEmpty(sEntity.AssetPath))
-                {
-                    // Retrocompatibilidade: Converte AssetPath para Guid
-                    var foundGuid = ERus.Engine.Core.Engine.Instance.AssetDatabase.GetGuidByPath(sEntity.AssetPath);
-                    if (foundGuid.HasValue) guidToUse = foundGuid.Value;
-                }
-
-                registry.AddComponent(entity, new MeshComponent { 
-                    Type = sEntity.MeshType != -1 ? (PrimitiveMeshType)sEntity.MeshType : PrimitiveMeshType.None,
-                    AssetGuid = guidToUse
-                });
-            }
-
-            if (sEntity.HasCamera)
-            {
-                registry.AddComponent(entity, new CameraComponent 
-                { 
-                    FieldOfView = sEntity.CamFov,
-                    IsPrimary = sEntity.CamIsPrimary,
-                    NearClip = sEntity.CamNear,
-                    FarClip = sEntity.CamFar
-                });
-            }
-
-            if (sEntity.Scripts != null && sEntity.Scripts.Count > 0)
-            {
-                var scriptComp = new ScriptComponent();
-                foreach (var sScript in sEntity.Scripts)
-                {
-                    if (string.IsNullOrEmpty(sScript.ScriptType)) continue;
-
-                    var scriptData = new ScriptData { ScriptTypeName = sScript.ScriptType };
-                    foreach(var kvp in sScript.ScriptFields)
-                    {
-                        scriptData.FieldValues[kvp.Key] = kvp.Value;
-                    }
-                    scriptComp.Scripts.Add(scriptData);
-                }
-                if (scriptComp.Scripts.Count > 0)
-                {
-                    registry.AddComponent(entity, scriptComp);
-                }
+                RelationshipSystem.SetParent(createdEntities[i], createdEntities[sEntity.ParentIndex], registry);
             }
         }
 
         Console.WriteLine($"[SceneSerializer] Cena carregada de {filepath} ({sceneData.Entities.Count} entidades)");
+    }
+
+    public static void SavePrefab(string filepath, Scene scene, Entity rootEntity)
+    {
+        var registry = scene.Registry;
+        var sceneData = new SceneData();
+        
+        var entitiesToSave = new List<Entity>();
+        void CollectRecursive(Entity e)
+        {
+            entitiesToSave.Add(e);
+            if (registry.HasComponent<RelationshipComponent>(e))
+            {
+                var rel = registry.GetComponent<RelationshipComponent>(e);
+                var child = rel.FirstChild;
+                while (child.HasValue)
+                {
+                    CollectRecursive(child.Value);
+                    if (registry.HasComponent<RelationshipComponent>(child.Value))
+                        child = registry.GetComponent<RelationshipComponent>(child.Value).NextSibling;
+                    else
+                        child = null;
+                }
+            }
+        }
+        CollectRecursive(rootEntity);
+
+        var entityToIndex = new Dictionary<int, int>();
+        for (int i = 0; i < entitiesToSave.Count; i++)
+            entityToIndex[entitiesToSave[i].Id] = i;
+
+        foreach (var entity in entitiesToSave)
+        {
+            var sEntity = SerializeSingleEntity(entity, registry);
+            
+            if (registry.HasComponent<RelationshipComponent>(entity))
+            {
+                var rel = registry.GetComponent<RelationshipComponent>(entity);
+                if (rel.Parent.HasValue && entityToIndex.TryGetValue(rel.Parent.Value.Id, out int parentIndex))
+                    sEntity.ParentIndex = parentIndex;
+            }
+
+            sceneData.Entities.Add(sEntity);
+        }
+
+        var options = new JsonSerializerOptions { WriteIndented = true };
+        string json = JsonSerializer.Serialize(sceneData, options);
+        File.WriteAllText(filepath, json);
+        Console.WriteLine($"[SceneSerializer] Prefab salvo em {filepath}");
+    }
+
+    public static Entity? LoadPrefab(string filepath, Scene scene, Entity? parent = null)
+    {
+        var registry = scene.Registry;
+        if (!File.Exists(filepath)) return null;
+
+        string json = File.ReadAllText(filepath);
+        SceneData? sceneData;
+        try { sceneData = JsonSerializer.Deserialize<SceneData>(json); }
+        catch { return null; }
+
+        if (sceneData == null || sceneData.Entities.Count == 0) return null;
+
+        var createdEntities = new List<Entity>();
+        foreach (var sEntity in sceneData.Entities)
+        {
+            var entity = registry.CreateEntity();
+            DeserializeSingleEntity(entity, sEntity, registry);
+            createdEntities.Add(entity);
+        }
+
+        for (int i = 0; i < sceneData.Entities.Count; i++)
+        {
+            var sEntity = sceneData.Entities[i];
+            if (sEntity.ParentIndex >= 0 && sEntity.ParentIndex < createdEntities.Count)
+            {
+                RelationshipSystem.SetParent(createdEntities[i], createdEntities[sEntity.ParentIndex], registry);
+            }
+            else if (i == 0 && parent.HasValue) // link root to target parent
+            {
+                RelationshipSystem.SetParent(createdEntities[i], parent.Value, registry);
+            }
+        }
+
+        Console.WriteLine($"[SceneSerializer] Prefab carregado de {filepath} ({sceneData.Entities.Count} entidades)");
+        return createdEntities[0];
     }
 }

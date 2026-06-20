@@ -85,6 +85,25 @@ public class ProjectWindow : EditorWindow
                             }
                         }
                     }
+
+                    var entityPayload = ImGui.AcceptDragDropPayload("ENTITY");
+                    if (entityPayload.NativePtr != null)
+                    {
+                        int id = *(int*)entityPayload.Data;
+                        var ecsModule = _engine.GetModule<ERus.Engine.Modules.ECSModule>();
+                        var entity = ecsModule.ActiveScene.Registry.GetLivingEntities().FirstOrDefault(e => e.Id == id);
+                        
+                        string tagName = "Prefab";
+                        if (ecsModule.ActiveScene.Registry.HasComponent<ERus.Engine.ECS.TagComponent>(entity))
+                            tagName = ecsModule.ActiveScene.Registry.GetComponent<ERus.Engine.ECS.TagComponent>(entity).Name;
+                        
+                        string safeName = string.Join("_", tagName.Split(Path.GetInvalidFileNameChars()));
+                        string destFile = Path.Combine(dir, safeName + ".prefab");
+                        
+                        ERus.Engine.ECS.SceneSerializer.SavePrefab(destFile, ecsModule.ActiveScene, entity);
+                        _engine.AssetDatabase.Scan();
+                        _ = _engine.GetModule<ERus.Engine.Modules.NetworkModule>()?.NetworkManager?.AssetSync?.AnnounceAssetAsync(destFile);
+                    }
                 }
                 ImGui.EndDragDropTarget();
             }
@@ -161,6 +180,37 @@ public class ProjectWindow : EditorWindow
                 _engine.AssetDatabase.Scan();
                 ERus.Engine.Scripting.ConsoleLog.Log($"[Project] Arquivo deletado via teclado: {_selectedFile}");
                 _selectedFile = null;
+            }
+        }
+        
+        float remainingH = ImGui.GetContentRegionAvail().Y;
+        if (remainingH > 0)
+        {
+            ImGui.Dummy(new System.Numerics.Vector2(ImGui.GetContentRegionAvail().X, remainingH));
+            if (ImGui.BeginDragDropTarget())
+            {
+                var entityPayload = ImGui.AcceptDragDropPayload("ENTITY");
+                unsafe
+                {
+                    if (entityPayload.NativePtr != null)
+                    {
+                        int id = *(int*)entityPayload.Data;
+                        var ecsModule = _engine.GetModule<ERus.Engine.Modules.ECSModule>();
+                        var entity = ecsModule.ActiveScene.Registry.GetLivingEntities().FirstOrDefault(e => e.Id == id);
+                        
+                        string tagName = "Prefab";
+                        if (ecsModule.ActiveScene.Registry.HasComponent<ERus.Engine.ECS.TagComponent>(entity))
+                            tagName = ecsModule.ActiveScene.Registry.GetComponent<ERus.Engine.ECS.TagComponent>(entity).Name;
+                        
+                        string safeName = string.Join("_", tagName.Split(Path.GetInvalidFileNameChars()));
+                        string destFile = Path.Combine(_currentPath, safeName + ".prefab");
+                        
+                        ERus.Engine.ECS.SceneSerializer.SavePrefab(destFile, ecsModule.ActiveScene, entity);
+                        _engine.AssetDatabase.Scan();
+                        _ = _engine.GetModule<ERus.Engine.Modules.NetworkModule>()?.NetworkManager?.AssetSync?.AnnounceAssetAsync(destFile);
+                    }
+                }
+                ImGui.EndDragDropTarget();
             }
         }
         

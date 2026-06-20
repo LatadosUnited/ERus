@@ -60,7 +60,7 @@ gh release create v0.3.7 .\Builds\ERus.Engine-v0.3.7.zip --title "ERus Engine v0
 
 **Para o Hub:**
 ```powershell
-gh release create v0.1.0 .\Builds\ERus.Hub-v0.1.0.zip --title "ERus Hub v0.1.0" --notes "Notas de atualização do Hub." --repo "LatadosUnited/ERusHub"
+gh release create v0.1.1 .\Builds\ERus.Hub-v0.1.0.zip --title "ERus Hub v0.1.1" --notes "Notas de atualização do Hub." --repo "LatadosUnited/ERusHub"
 ```
 
 ### Opção B: Passo a passo pela Interface Web
