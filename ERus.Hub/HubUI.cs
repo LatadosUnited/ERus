@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Numerics;
 using System.Threading.Tasks;
+using System.Linq;
 using ImGuiNET;
 
 namespace ERus.Hub;
@@ -29,6 +30,18 @@ public class HubUI
     private bool _isLoadingReleases = false;
     private float _downloadProgress = -1f; // -1 indicates not downloading
     private string _downloadingVersion = "";
+    private string _errorMessage = "";
+    private bool _isFolderPickerOpen = false;
+    private string _openingProject = "";
+    private DateTime _lastRefreshTime = DateTime.MinValue;
+    
+    // UI Layout State
+    private int _selectedTab = 0; // 0 = Projects, 1 = Installs
+    private string _searchQuery = "";
+
+    // Modal Delete Project state
+    private ProjectData? _projectToDelete = null;
+    private bool _triggerDeleteProjectModal = false;
     
     // Config state
     private string _installDirectoryPath = "";
@@ -46,11 +59,49 @@ public class HubUI
             : _config.DefaultInstallDirectory;
 
         _releaseManager = new GitHubReleaseManager();
+        FetchReleases(false);
+        CheckDotNetRequirement();
+    }
+
+    private void FetchReleases(bool forceRefresh)
+    {
         _isLoadingReleases = true;
         Task.Run(async () => 
         {
-            _availableReleases = await _releaseManager.GetAvailableReleasesAsync();
+            _availableReleases = await _releaseManager.GetAvailableReleasesAsync(_config, forceRefresh);
             _isLoadingReleases = false;
+        });
+    }
+
+    private void CheckDotNetRequirement()
+    {
+        Task.Run(() => 
+        {
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "dotnet",
+                    Arguments = "--list-runtimes",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    CreateNoWindow = true
+                };
+                using var proc = Process.Start(psi);
+                if (proc != null)
+                {
+                    string output = proc.StandardOutput.ReadToEnd();
+                    proc.WaitForExit();
+                    if (!output.Contains("Microsoft.NETCore.App 10.0"))
+                    {
+                        _errorMessage = "Atenção: O Runtime do .NET 10.0 não foi encontrado. A Engine poderá falhar ao iniciar.";
+                    }
+                }
+            }
+            catch
+            {
+                _errorMessage = "Atenção: 'dotnet' não reconhecido. O SDK/Runtime do .NET pode não estar instalado.";
+            }
         });
     }
 
@@ -60,32 +111,72 @@ public class HubUI
         ImGui.SetNextWindowSize(ImGui.GetIO().DisplaySize);
         ImGui.Begin("ERus Hub", ImGuiWindowFlags.NoDecoration | ImGuiWindowFlags.NoMove | ImGuiWindowFlags.NoSavedSettings);
 
-        if (ImGui.BeginTabBar("HubTabs"))
+        if (!string.IsNullOrEmpty(_errorMessage))
         {
-            if (ImGui.BeginTabItem("Projects"))
-            {
-                DrawProjectsTab();
-                ImGui.EndTabItem();
-            }
+            ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1, 0.2f, 0.2f, 1));
+            ImGui.TextWrapped($"Error: {_errorMessage}");
+            ImGui.PopStyleColor();
+            if (ImGui.Button("Dismiss")) _errorMessage = "";
+            ImGui.Separator();
+        }
 
-            if (ImGui.BeginTabItem("Installs"))
-            {
-                DrawInstallsTab();
-                ImGui.EndTabItem();
-            }
-            ImGui.EndTabBar();
+        float footerHeight = (_downloadProgress >= 0) ? 35f : 0f;
+        Vector2 contentSize = new Vector2(0, ImGui.GetContentRegionAvail().Y - footerHeight);
+
+        // Sidebar
+        ImGui.BeginChild("Sidebar", new Vector2(220, contentSize.Y), ImGuiChildFlags.Border);
+        DrawSidebar();
+        ImGui.EndChild();
+
+        ImGui.SameLine();
+
+        // Main Content
+        ImGui.BeginChild("MainContent", new Vector2(0, contentSize.Y), ImGuiChildFlags.None);
+        if (_selectedTab == 0) DrawProjectsTab();
+        else if (_selectedTab == 1) DrawInstallsTab();
+        ImGui.EndChild();
+
+        if (footerHeight > 0)
+        {
+            ImGui.Separator();
+            DrawFooter();
         }
 
         DrawNewProjectModal();
         DrawAddEngineModal();
+        DrawDeleteProjectModal();
 
         ImGui.End();
+    }
+
+    private void DrawSidebar()
+    {
+        ImGui.Spacing();
+        ImGui.TextDisabled(" ERus Engine");
+        ImGui.Separator();
+        ImGui.Spacing();
+
+        if (ImGui.Selectable(" Projects", _selectedTab == 0, ImGuiSelectableFlags.None, new Vector2(0, 30))) _selectedTab = 0;
+        ImGui.Spacing();
+        if (ImGui.Selectable(" Installs", _selectedTab == 1, ImGuiSelectableFlags.None, new Vector2(0, 30))) _selectedTab = 1;
+    }
+
+    private void DrawFooter()
+    {
+        if (_downloadProgress >= 0)
+        {
+            ImGui.Text($" Downloading Engine ({_downloadingVersion}): ");
+            ImGui.SameLine();
+            ImGui.ProgressBar(_downloadProgress, new Vector2(ImGui.GetContentRegionAvail().X - 10, 20));
+        }
     }
 
     private void DrawProjectsTab()
     {
         ImGui.Spacing();
-        if (ImGui.Button("New Project", new Vector2(120, 30)))
+        ImGui.InputTextWithHint("##Search", "Search projects...", ref _searchQuery, 128);
+        ImGui.SameLine(ImGui.GetContentRegionAvail().X - 120);
+        if (ImGui.Button("New Project", new Vector2(120, 26)))
         {
             _triggerNewProjectModal = true;
         }
@@ -96,28 +187,91 @@ public class HubUI
 
         if (_config.Projects.Count == 0)
         {
-            ImGui.Text("You have no projects yet.");
+            ImGui.TextDisabled("You have no projects yet.");
+            return;
         }
-        else
+
+        var sortedProjects = _config.Projects.OrderByDescending(p => p.LastModified).ToArray();
+        
+        float windowVisibleX2 = ImGui.GetWindowPos().X + ImGui.GetWindowContentRegionMax().X;
+        float cardWidth = 240f;
+        float cardHeight = 110f;
+        float spacing = ImGui.GetStyle().ItemSpacing.X;
+
+        int i = 0;
+        foreach (var proj in sortedProjects)
         {
-            foreach (var proj in _config.Projects.ToArray())
+            if (!string.IsNullOrEmpty(_searchQuery) && !proj.Name.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            ImGui.PushID(proj.Path);
+
+            bool exists = Directory.Exists(proj.Path);
+            
+            if (ImGui.BeginChild($"Card_{i}", new Vector2(cardWidth, cardHeight), ImGuiChildFlags.Border, ImGuiWindowFlags.NoScrollbar))
             {
-                ImGui.PushID(proj.Path);
-                ImGui.BeginGroup();
-                ImGui.TextDisabled(proj.EngineVersion);
-                ImGui.SameLine();
-                ImGui.Text(proj.Name);
-                ImGui.TextDisabled(proj.Path);
+                Vector2 cursorPos = ImGui.GetCursorPos();
                 
-                ImGui.SameLine(ImGui.GetWindowWidth() - 100);
-                if (ImGui.Button("Open", new Vector2(80, 24)))
+                ImGui.PushStyleVar(ImGuiStyleVar.SelectableTextAlign, new Vector2(0, 0));
+                if (ImGui.Selectable("##card_select", false, ImGuiSelectableFlags.None, new Vector2(cardWidth, cardHeight)) && exists)
                 {
                     OpenProject(proj);
                 }
-                ImGui.EndGroup();
-                ImGui.Separator();
-                ImGui.PopID();
+                ImGui.PopStyleVar();
+
+                ImGui.SetCursorPos(cursorPos); // Restore
+
+                if (!exists) ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1, 0.3f, 0.3f, 1));
+                
+                ImGui.Text(proj.Name);
+                
+                if (!exists)
+                {
+                    ImGui.Text("(Not found)");
+                    ImGui.PopStyleColor();
+                }
+                else
+                {
+                    ImGui.TextDisabled(proj.EngineVersion);
+                }
+
+                ImGui.Spacing();
+                ImGui.TextDisabled(proj.LastModified.ToString("yyyy-MM-dd HH:mm"));
+
+                ImGui.SetCursorPos(new Vector2(cardWidth - 35, 5));
+                if (ImGui.Button("..."))
+                {
+                    ImGui.OpenPopup("ProjMenu");
+                }
+
+                if (ImGui.BeginPopup("ProjMenu"))
+                {
+                    if (ImGui.Selectable("Open") && exists) OpenProject(proj);
+                    if (ImGui.Selectable("Remove from List"))
+                    {
+                        _config.Projects.Remove(proj);
+                        _ = ConfigManager.SaveAsync(_config);
+                    }
+                    if (ImGui.Selectable("Delete from Disk"))
+                    {
+                        _projectToDelete = proj;
+                        _triggerDeleteProjectModal = true;
+                    }
+                    ImGui.EndPopup();
+                }
+
+                ImGui.EndChild();
             }
+
+            float lastCardMaxX = ImGui.GetItemRectMax().X;
+            float nextCardMaxX = lastCardMaxX + spacing + cardWidth;
+            if (i < sortedProjects.Length - 1 && nextCardMaxX < windowVisibleX2)
+            {
+                ImGui.SameLine();
+            }
+
+            ImGui.PopID();
+            i++;
         }
     }
 
@@ -127,19 +281,26 @@ public class HubUI
         ImGui.Text("Engine Installation Directory:");
         ImGui.InputText("##InstallDir", ref _installDirectoryPath, 256);
         ImGui.SameLine();
+        ImGui.BeginDisabled(_isFolderPickerOpen);
         if (ImGui.Button("..."))
         {
-            var dialogResult = NativeFileDialogSharp.Dialog.FolderPicker();
-            if (dialogResult.IsOk)
+            _isFolderPickerOpen = true;
+            Task.Run(() => 
             {
-                _installDirectoryPath = dialogResult.Path;
-            }
+                var dialogResult = NativeFileDialogSharp.Dialog.FolderPicker();
+                if (dialogResult.IsOk)
+                {
+                    _installDirectoryPath = dialogResult.Path;
+                }
+                _isFolderPickerOpen = false;
+            });
         }
+        ImGui.EndDisabled();
         ImGui.SameLine();
         if (ImGui.Button("Save Path"))
         {
             _config.DefaultInstallDirectory = _installDirectoryPath;
-            ConfigManager.Save(_config);
+            _ = ConfigManager.SaveAsync(_config);
         }
 
         ImGui.Spacing();
@@ -162,6 +323,17 @@ public class HubUI
             ImGui.PushID("local_" + inst.ExecutablePath);
             ImGui.Text(inst.VersionName);
             ImGui.TextDisabled(inst.ExecutablePath);
+            ImGui.SameLine(ImGui.GetWindowWidth() - 100);
+            if (ImGui.Button("Uninstall", new Vector2(80, 24)))
+            {
+                _config.Installs.Remove(inst);
+                _ = ConfigManager.SaveAsync(_config);
+                string? parentDir = Path.GetDirectoryName(inst.ExecutablePath);
+                if (parentDir != null && parentDir.Contains("ERusHub") && Directory.Exists(parentDir))
+                {
+                    try { Directory.Delete(parentDir, true); } catch { }
+                }
+            }
             ImGui.Separator();
             ImGui.PopID();
         }
@@ -169,6 +341,20 @@ public class HubUI
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.Text("Available on GitHub");
+        ImGui.SameLine(ImGui.GetWindowWidth() - 120);
+
+        var timeSinceRefresh = DateTime.Now - _lastRefreshTime;
+        bool canRefresh = timeSinceRefresh.TotalSeconds > 60;
+
+        ImGui.BeginDisabled(!canRefresh || _isLoadingReleases);
+        string refreshText = canRefresh ? "Refresh" : $"Wait ({(int)(60 - timeSinceRefresh.TotalSeconds)}s)";
+        if (ImGui.Button(refreshText, new Vector2(100, 24)))
+        {
+            _lastRefreshTime = DateTime.Now;
+            FetchReleases(true);
+        }
+        ImGui.EndDisabled();
+
         ImGui.Separator();
         ImGui.Spacing();
 
@@ -198,21 +384,13 @@ public class HubUI
                 }
                 else
                 {
-                    if (_downloadProgress >= 0 && _downloadingVersion == release.TagName)
+                    ImGui.BeginDisabled(_downloadProgress >= 0);
+                    ImGui.SameLine(ImGui.GetWindowWidth() - 100);
+                    if (ImGui.Button("Download", new Vector2(80, 24)))
                     {
-                        ImGui.ProgressBar(_downloadProgress, new Vector2(ImGui.GetWindowWidth() - 50, 20));
+                        StartDownload(release);
                     }
-                    else
-                    {
-                        // Enable download button only if not currently downloading something else
-                        ImGui.BeginDisabled(_downloadProgress >= 0);
-                        ImGui.SameLine(ImGui.GetWindowWidth() - 100);
-                        if (ImGui.Button("Download", new Vector2(80, 24)))
-                        {
-                            StartDownload(release);
-                        }
-                        ImGui.EndDisabled();
-                    }
+                    ImGui.EndDisabled();
                 }
                 ImGui.Separator();
                 ImGui.PopID();
@@ -237,6 +415,9 @@ public class HubUI
                 await _releaseManager.DownloadAndInstallAsync(release, asset, _config, (progress) =>
                 {
                     _downloadProgress = progress;
+                }, (error) => 
+                {
+                    _errorMessage = error;
                 });
             }
             finally
@@ -282,6 +463,9 @@ public class HubUI
                 if (!Directory.Exists(fullPath))
                 {
                     Directory.CreateDirectory(fullPath);
+                    Directory.CreateDirectory(Path.Combine(fullPath, "Assets"));
+                    Directory.CreateDirectory(Path.Combine(fullPath, "Scripts"));
+                    File.WriteAllText(Path.Combine(fullPath, $"{_newProjectName}.erusproj"), "{}");
                 }
                 
                 var proj = new ProjectData
@@ -293,7 +477,7 @@ public class HubUI
                 };
                 
                 _config.Projects.Add(proj);
-                ConfigManager.Save(_config);
+                _ = ConfigManager.SaveAsync(_config);
                 ImGui.CloseCurrentPopup();
             }
             ImGui.SameLine();
@@ -329,7 +513,7 @@ public class HubUI
                 };
                 
                 _config.Installs.Add(inst);
-                ConfigManager.Save(_config);
+                _ = ConfigManager.SaveAsync(_config);
                 
                 if (string.IsNullOrEmpty(_selectedEngineVersion))
                     _selectedEngineVersion = _newEngineVersion;
@@ -345,32 +529,108 @@ public class HubUI
         }
     }
 
+    private void DrawDeleteProjectModal()
+    {
+        if (_triggerDeleteProjectModal)
+        {
+            ImGui.OpenPopup("Delete Project");
+            _triggerDeleteProjectModal = false;
+        }
+
+        bool dummy = true;
+        if (ImGui.BeginPopupModal("Delete Project", ref dummy, ImGuiWindowFlags.AlwaysAutoResize))
+        {
+            if (_projectToDelete != null)
+            {
+                ImGui.Text("Are you sure you want to permanently delete the project:");
+                ImGui.TextColored(new Vector4(1, 0.2f, 0.2f, 1), _projectToDelete.Name);
+                ImGui.TextDisabled(_projectToDelete.Path);
+                ImGui.Spacing();
+                ImGui.Text("This action cannot be undone and will delete ALL files from the disk!");
+                ImGui.Spacing();
+                ImGui.Separator();
+                ImGui.Spacing();
+
+                ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.8f, 0.2f, 0.2f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.9f, 0.3f, 0.3f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(1.0f, 0.4f, 0.4f, 1.0f));
+                if (ImGui.Button("Yes, Delete Files", new Vector2(150, 0)))
+                {
+                    try
+                    {
+                        if (Directory.Exists(_projectToDelete.Path))
+                        {
+                            Directory.Delete(_projectToDelete.Path, true);
+                        }
+                        _config.Projects.Remove(_projectToDelete);
+                        _ = ConfigManager.SaveAsync(_config);
+                    }
+                    catch (Exception ex)
+                    {
+                        _errorMessage = $"Failed to delete project folder: {ex.Message}";
+                    }
+                    _projectToDelete = null;
+                    ImGui.CloseCurrentPopup();
+                }
+                ImGui.PopStyleColor(3);
+
+                ImGui.SameLine();
+                if (ImGui.Button("Cancel", new Vector2(120, 0)))
+                {
+                    _projectToDelete = null;
+                    ImGui.CloseCurrentPopup();
+                }
+            }
+            ImGui.EndPopup();
+        }
+    }
+
     private void OpenProject(ProjectData project)
     {
         var install = _config.Installs.Find(i => i.VersionName == project.EngineVersion);
         if (install == null || !File.Exists(install.ExecutablePath))
         {
-            Console.WriteLine($"[Hub] Erro: Executável da engine não encontrado para a versão {project.EngineVersion}");
+            _errorMessage = $"Executável da engine não encontrado para a versão {project.EngineVersion}";
             return;
         }
 
         project.LastModified = DateTime.Now;
-        ConfigManager.Save(_config);
+        _ = ConfigManager.SaveAsync(_config);
 
-        try
+        _openingProject = project.Path;
+        Task.Run(async () =>
         {
-            var startInfo = new ProcessStartInfo
+            try
             {
-                FileName = install.ExecutablePath,
-                Arguments = $"--project \"{project.Path}\"",
-                UseShellExecute = false,
-                WorkingDirectory = Path.GetDirectoryName(install.ExecutablePath)
-            };
-            Process.Start(startInfo);
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[Hub] Falha ao abrir engine: {ex.Message}");
-        }
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = install.ExecutablePath,
+                    Arguments = $"--project \"{project.Path}\"",
+                    UseShellExecute = false,
+                    WorkingDirectory = Path.GetDirectoryName(install.ExecutablePath)
+                };
+                var proc = Process.Start(startInfo);
+                if (proc != null)
+                {
+                    proc.EnableRaisingEvents = true;
+                    proc.Exited += (sender, e) =>
+                    {
+                        if (proc.ExitCode != 0)
+                        {
+                            _errorMessage = $"A Engine foi encerrada inesperadamente (Exit Code: {proc.ExitCode})";
+                        }
+                    };
+                }
+                await Task.Delay(1000); // Dar um feedback visual rápido
+            }
+            catch (Exception ex)
+            {
+                _errorMessage = $"Falha ao abrir engine: {ex.Message}";
+            }
+            finally
+            {
+                _openingProject = "";
+            }
+        });
     }
 }

@@ -26,6 +26,12 @@ public class ECSModule : IEngineModule
         ActiveScene = new Scene();
 
         // Registrar os sistemas base (A ordem importa!)
+        var physicsSystem = new PhysicsSystem(ActiveScene.Registry, _engine);
+        _systems.Add(physicsSystem);
+
+        var animatorSystem = new AnimatorSystem(ActiveScene.Registry, _engine);
+        _systems.Add(animatorSystem);
+
         var scriptSystem = new ScriptExecutionSystem(ActiveScene.Registry, _engine);
         _systems.Add(scriptSystem);
     }

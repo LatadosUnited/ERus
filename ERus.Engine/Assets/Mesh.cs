@@ -65,6 +65,14 @@ public class Mesh : IDisposable
         _gl.EnableVertexAttribArray(4);
         _gl.VertexAttribPointer(4, 3, VertexAttribPointerType.Float, false, (uint)sizeof(Vertex), (void*)(11 * sizeof(float)));
 
+        // BoneIDs: ivec4
+        _gl.EnableVertexAttribArray(5);
+        _gl.VertexAttribIPointer(5, 4, VertexAttribIType.Int, (uint)sizeof(Vertex), (void*)(14 * sizeof(float)));
+
+        // Weights: vec4
+        _gl.EnableVertexAttribArray(6);
+        _gl.VertexAttribPointer(6, 4, VertexAttribPointerType.Float, false, (uint)sizeof(Vertex), (void*)(14 * sizeof(float) + 4 * sizeof(int)));
+
         _gl.BindVertexArray(0);
     }
 

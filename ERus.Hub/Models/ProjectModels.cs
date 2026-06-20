@@ -22,4 +22,6 @@ public class HubConfig
     public string DefaultInstallDirectory { get; set; } = string.Empty;
     public List<ProjectData> Projects { get; set; } = new List<ProjectData>();
     public List<EngineInstall> Installs { get; set; } = new List<EngineInstall>();
+    public DateTime LastGitHubCheck { get; set; } = DateTime.MinValue;
+    public List<GitHubRelease> CachedReleases { get; set; } = new List<GitHubRelease>();
 }

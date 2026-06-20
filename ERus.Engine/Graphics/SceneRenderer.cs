@@ -35,6 +35,7 @@ public class SceneRenderer : IDisposable
     private int _assetViewLoc;
     private int _assetProjLoc;
     private int _assetTintLoc;
+    private int[] _boneMatricesLocs;
 
     private readonly string _vertexShaderSource = @"
         #version 330 core
@@ -70,6 +71,8 @@ public class SceneRenderer : IDisposable
         layout (location = 0) in vec3 aPosition;
         layout (location = 1) in vec3 aNormal;
         layout (location = 2) in vec2 aTexCoords;
+        layout (location = 5) in ivec4 aBoneIds;
+        layout (location = 6) in vec4 aWeights;
 
         out vec2 TexCoords;
         out vec3 Normal;
@@ -79,12 +82,44 @@ public class SceneRenderer : IDisposable
         uniform mat4 uView;
         uniform mat4 uProjection;
 
+        const int MAX_BONES = 100;
+        const int MAX_BONE_INFLUENCE = 4;
+        uniform mat4 uFinalBonesMatrices[MAX_BONES];
+
         void main()
         {
-            gl_Position = uProjection * uView * uModel * vec4(aPosition, 1.0);
+            vec4 totalPosition = vec4(0.0f);
+            vec3 totalNormal = vec3(0.0f);
+            
+            bool hasBones = false;
+            for(int i = 0 ; i < MAX_BONE_INFLUENCE ; i++)
+            {
+                if(aBoneIds[i] == -1) 
+                    continue;
+                
+                if(aBoneIds[i] >= MAX_BONES) 
+                {
+                    totalPosition = vec4(aPosition,1.0f);
+                    break;
+                }
+                
+                hasBones = true;
+                vec4 localPosition = uFinalBonesMatrices[aBoneIds[i]] * vec4(aPosition, 1.0f);
+                totalPosition += localPosition * aWeights[i];
+                vec3 localNormal = mat3(uFinalBonesMatrices[aBoneIds[i]]) * aNormal;
+                totalNormal += localNormal * aWeights[i];
+            }
+            
+            if (!hasBones)
+            {
+                totalPosition = vec4(aPosition, 1.0f);
+                totalNormal = aNormal;
+            }
+
+            gl_Position = uProjection * uView * uModel * totalPosition;
             TexCoords = aTexCoords;
-            Normal = mat3(transpose(inverse(uModel))) * aNormal;
-            FragPos = vec3(uModel * vec4(aPosition, 1.0));
+            Normal = mat3(transpose(inverse(uModel))) * totalNormal;
+            FragPos = vec3(uModel * totalPosition);
         }
         ";
 
@@ -167,6 +202,12 @@ public class SceneRenderer : IDisposable
         _assetViewLoc = _gl.GetUniformLocation(_assetShaderProgram, "uView");
         _assetProjLoc = _gl.GetUniformLocation(_assetShaderProgram, "uProjection");
         _assetTintLoc = _gl.GetUniformLocation(_assetShaderProgram, "uColorTint");
+        
+        _boneMatricesLocs = new int[100];
+        for (int i = 0; i < 100; i++)
+        {
+            _boneMatricesLocs[i] = _gl.GetUniformLocation(_assetShaderProgram, $"uFinalBonesMatrices[{i}]");
+        }
 
         // 3. Criar VBO e VAO
         float[] vertices =
@@ -507,6 +548,31 @@ public class SceneRenderer : IDisposable
                 _gl.UniformMatrix4(_assetViewLoc, 1, false, (float*)&view);
                 _gl.UniformMatrix4(_assetProjLoc, 1, false, (float*)&proj);
                 _gl.UniformMatrix4(_assetModelLoc, 1, false, (float*)&modelMatrix);
+
+                // Configurar Bones Matrices se houver Animator
+                if (registry.HasComponent<AnimatorComponent>(entity))
+                {
+                    ref var animator = ref registry.GetComponent<AnimatorComponent>(entity);
+                    for (int i = 0; i < 100; i++)
+                    {
+                        var mat = animator.FinalBoneMatrices[i];
+                        if (_boneMatricesLocs[i] != -1)
+                        {
+                            _gl.UniformMatrix4(_boneMatricesLocs[i], 1, false, (float*)&mat);
+                        }
+                    }
+                }
+                else
+                {
+                    var identity = Matrix4x4.Identity;
+                    for (int i = 0; i < 100; i++)
+                    {
+                        if (_boneMatricesLocs[i] != -1)
+                        {
+                            _gl.UniformMatrix4(_boneMatricesLocs[i], 1, false, (float*)&identity);
+                        }
+                    }
+                }
 
                 var assetManager = ERus.Engine.Assets.AssetManager.Get();
                 string? path = ERus.Engine.Core.Engine.Instance.AssetDatabase.GetPathByGuid(mesh.AssetGuid);

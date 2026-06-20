@@ -35,13 +35,17 @@ class Program
 
     private static void OnLoad()
     {
+        Logger.Initialize();
+        
         _gl = _window.CreateOpenGL();
         _inputContext = _window.CreateInput();
         _imGuiController = new ImGuiController(_gl, _window, _inputContext);
         
+        HubTheme.Apply();
+        
         _hubUI = new HubUI();
         
-        _gl.ClearColor(0.1f, 0.11f, 0.13f, 1.0f);
+        _gl.ClearColor(0.08f, 0.09f, 0.10f, 1.0f); // Match theme dark bg
     }
 
     private static void OnUpdate(double deltaTime)

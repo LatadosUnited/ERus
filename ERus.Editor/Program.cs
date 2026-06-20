@@ -26,7 +26,8 @@ class Program
 
         // Módulos da Engine principal
         engine.AddModule(new GraphicsModule());  // 1. Limpa tela (fundo azul)
-        engine.AddModule(new ECSModule());       // 2. Lógica local e Física
+        engine.AddModule(new PhysicsModule());   // 2. Motor de Física
+        engine.AddModule(new ECSModule());       // 3. Lógica local (ECS)
         engine.AddModule(new InputModule());     // 3. Sistema de Input (Snapshots)
         engine.AddModule(new ScriptModule());    // 4. Scripts do usuário (gameplay)
         engine.AddModule(new NetworkModule());   // 5. Sincronização de Rede

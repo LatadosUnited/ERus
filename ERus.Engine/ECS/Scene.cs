@@ -16,9 +16,13 @@ public class Scene
         Registry.RegisterComponent<TagComponent>();
         Registry.RegisterComponent<MeshComponent>();
         Registry.RegisterComponent<NetworkIdentityComponent>();
+        Registry.RegisterComponent<NetworkInterpolationComponent>();
         Registry.RegisterComponent<CameraComponent>();
         Registry.RegisterComponent<ScriptComponent>();
         Registry.RegisterComponent<RelationshipComponent>();
+        Registry.RegisterComponent<RigidBodyComponent>();
+        Registry.RegisterComponent<ColliderComponent>();
+        Registry.RegisterComponent<JointComponent>();
     }
 
     public void Clear()

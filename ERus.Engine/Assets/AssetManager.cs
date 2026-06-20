@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using Silk.NET.Assimp;
 using Silk.NET.OpenGL;
 using StbImageSharp;
@@ -80,16 +81,25 @@ public class AssetManager
         for (uint i = 0; i < node->MNumMeshes; i++)
         {
             var mesh = scene->MMeshes[node->MMeshes[i]];
-            model.AddMesh(ProcessMesh(mesh, scene, directory));
+            model.AddMesh(ProcessMesh(mesh, scene, model, directory));
         }
 
         for (uint i = 0; i < node->MNumChildren; i++)
         {
             ProcessNode(node->MChildren[i], scene, model, directory);
         }
+        
+        // Se for o nó raiz, processamos animações e a hierarquia apenas uma vez
+        if (node == scene->MRootNode)
+        {
+            ProcessAnimations(scene, model);
+            model.RootNode = ProcessNodeHierarchy(scene->MRootNode);
+            // Copia o map pros metadados de anims se precisarem referenciar
+            foreach(var anim in model.Animations.Values) anim.BoneInfoMap = model.BoneInfoMap;
+        }
     }
 
-    private unsafe Mesh ProcessMesh(Silk.NET.Assimp.Mesh* mesh, Scene* scene, string directory)
+    private unsafe Mesh ProcessMesh(Silk.NET.Assimp.Mesh* mesh, Scene* scene, Model model, string directory)
     {
         var vertices = new List<Vertex>();
         var indices = new List<uint>();
@@ -99,6 +109,13 @@ public class AssetManager
         for (uint i = 0; i < mesh->MNumVertices; i++)
         {
             Vertex vertex = new Vertex();
+            
+            // Inicializar ossos
+            for (int j = 0; j < Vertex.MaxBoneInfluence; j++)
+            {
+                vertex.BoneIDs[j] = -1;
+                vertex.Weights[j] = 0.0f;
+            }
             
             vertex.Position = new Vector3(mesh->MVertices[i].X, mesh->MVertices[i].Y, mesh->MVertices[i].Z);
             
@@ -120,6 +137,8 @@ public class AssetManager
 
             vertices.Add(vertex);
         }
+
+        ExtractBoneWeightForVertices(vertices, mesh, model);
 
         // Process indices
         for (uint i = 0; i < mesh->MNumFaces; i++)
@@ -209,5 +228,118 @@ public class AssetManager
         _gl.TexParameterI(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Linear);
 
         return new Texture(_gl, textureId, typeName, path);
+    }
+
+    private unsafe void ExtractBoneWeightForVertices(List<Vertex> vertices, Silk.NET.Assimp.Mesh* mesh, Model model)
+    {
+        for (uint boneIndex = 0; boneIndex < mesh->MNumBones; ++boneIndex)
+        {
+            int boneID = -1;
+            string boneName = mesh->MBones[boneIndex]->MName.AsString;
+            
+            if (!model.BoneInfoMap.ContainsKey(boneName))
+            {
+                BoneInfo newBoneInfo = new BoneInfo
+                {
+                    Id = model.BoneCounter,
+                    Offset = mesh->MBones[boneIndex]->MOffsetMatrix
+                };
+                model.BoneInfoMap[boneName] = newBoneInfo;
+                boneID = model.BoneCounter;
+                model.BoneCounter++;
+            }
+            else
+            {
+                boneID = model.BoneInfoMap[boneName].Id;
+            }
+            
+            var weights = mesh->MBones[boneIndex]->MWeights;
+            int numWeights = (int)mesh->MBones[boneIndex]->MNumWeights;
+            
+            var span = CollectionsMarshal.AsSpan(vertices);
+            for (int weightIndex = 0; weightIndex < numWeights; ++weightIndex)
+            {
+                int vertexId = (int)weights[weightIndex].MVertexId;
+                float weight = weights[weightIndex].MWeight;
+                
+                SetVertexBoneData(ref span[vertexId], boneID, weight);
+            }
+        }
+    }
+
+    private unsafe void SetVertexBoneData(ref Vertex vertex, int boneID, float weight)
+    {
+        for (int i = 0; i < Vertex.MaxBoneInfluence; ++i)
+        {
+            if (vertex.BoneIDs[i] < 0)
+            {
+                vertex.Weights[i] = weight;
+                vertex.BoneIDs[i] = boneID;
+                break;
+            }
+        }
+    }
+
+    private unsafe void ProcessAnimations(Scene* scene, Model model)
+    {
+        for (uint i = 0; i < scene->MNumAnimations; i++)
+        {
+            var anim = scene->MAnimations[i];
+            var animData = new AnimationData
+            {
+                Name = anim->MName.AsString,
+                Duration = (float)anim->MDuration,
+                TicksPerSecond = (float)(anim->MTicksPerSecond != 0 ? anim->MTicksPerSecond : 25.0f)
+            };
+            
+            for (uint j = 0; j < anim->MNumChannels; j++)
+            {
+                var channel = anim->MChannels[j];
+                var boneChannel = new BoneAnimationChannel
+                {
+                    NodeName = channel->MNodeName.AsString
+                };
+                
+                for (uint p = 0; p < channel->MNumPositionKeys; p++)
+                {
+                    boneChannel.Positions.Add(new KeyPosition { 
+                        Position = new Vector3(channel->MPositionKeys[p].MValue.X, channel->MPositionKeys[p].MValue.Y, channel->MPositionKeys[p].MValue.Z), 
+                        TimeStamp = (float)channel->MPositionKeys[p].MTime 
+                    });
+                }
+                for (uint r = 0; r < channel->MNumRotationKeys; r++)
+                {
+                    boneChannel.Rotations.Add(new KeyRotation { 
+                        Orientation = new System.Numerics.Quaternion(channel->MRotationKeys[r].MValue.X, channel->MRotationKeys[r].MValue.Y, channel->MRotationKeys[r].MValue.Z, channel->MRotationKeys[r].MValue.W), 
+                        TimeStamp = (float)channel->MRotationKeys[r].MTime 
+                    });
+                }
+                for (uint s = 0; s < channel->MNumScalingKeys; s++)
+                {
+                    boneChannel.Scales.Add(new KeyScale { 
+                        Scale = new Vector3(channel->MScalingKeys[s].MValue.X, channel->MScalingKeys[s].MValue.Y, channel->MScalingKeys[s].MValue.Z), 
+                        TimeStamp = (float)channel->MScalingKeys[s].MTime 
+                    });
+                }
+                
+                animData.Channels[boneChannel.NodeName] = boneChannel;
+            }
+            
+            model.Animations[animData.Name] = animData;
+        }
+    }
+
+    private unsafe NodeHierarchy ProcessNodeHierarchy(Node* node)
+    {
+        var h = new NodeHierarchy
+        {
+            Name = node->MName.AsString,
+            Transformation = node->MTransformation
+        };
+        for (uint i = 0; i < node->MNumChildren; i++)
+        {
+            h.Children.Add(ProcessNodeHierarchy(node->MChildren[i]));
+        }
+        return h;
     }
 }
