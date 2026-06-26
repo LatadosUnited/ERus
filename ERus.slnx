@@ -3,4 +3,5 @@
   <Project Path="ERus.Engine/ERus.Engine.csproj" />
   <Project Path="ERus.Hub/ERus.Hub.csproj" />
   <Project Path="ERus.Server/ERus.Server.csproj" />
+  <Project Path="ERus.Tests/ERus.Tests.csproj" />
 </Solution>

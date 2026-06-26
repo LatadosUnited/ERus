@@ -98,9 +98,45 @@ public class AssetSyncManager
         };
 
         _networkManager.SendAssetAnnounce(packet);
-        Console.WriteLine($"[AssetSync] Anunciando asset {packet.FileName} (Hash: {hash})");
+        Console.WriteLine($"[AssetSync] Anunciando asset {packet.FileName} (Hash: {hash}) para todos");
         
         onHashReady?.Invoke(hash);
+    }
+
+    public async Task AnnounceAssetToPeerAsync(string filePath, NetPeer peer)
+    {
+        ERus.Engine.Core.Engine.Instance?.AssetDatabase.ProcessFile(filePath);
+        var guid = ERus.Engine.Core.Engine.Instance?.AssetDatabase.GetGuidByPath(filePath);
+        
+        string hash = "";
+        if (guid.HasValue)
+        {
+            string metaPath = filePath + ".meta";
+            if (File.Exists(metaPath))
+            {
+                try
+                {
+                    string json = await File.ReadAllTextAsync(metaPath);
+                    var meta = JsonSerializer.Deserialize<ERus.Engine.Assets.AssetMeta>(json);
+                    if (meta != null) hash = meta.Hash;
+                }
+                catch { }
+            }
+        }
+        
+        if (string.IsNullOrEmpty(hash)) return;
+
+        var fi = new FileInfo(filePath);
+
+        var packet = new AssetAnnouncePacket
+        {
+            Hash = hash,
+            FileName = Path.GetFileName(filePath),
+            FileSize = fi.Length
+        };
+
+        _networkManager.Dispatcher.SendToPeer(peer, packet, DeliveryMethod.ReliableOrdered);
+        Console.WriteLine($"[AssetSync] Anunciando asset {packet.FileName} (Hash: {hash}) para peer {peer.Id}");
     }
 
     // Chamado pelo Dispatcher quando recebe pacote AssetAnnouncePacket

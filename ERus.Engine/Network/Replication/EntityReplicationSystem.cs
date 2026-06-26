@@ -350,6 +350,95 @@ public class EntityReplicationSystem : BaseSystem
                 }
             }
         });
+        _dispatcher.SubscribeReusable<UpdateCameraPacket>((packet, peer) =>
+        {
+            if (_transport.IsHost) _dispatcher.SendToAllExcept(packet, peer, DeliveryMethod.ReliableOrdered);
+            
+            if (_identityMap.TryGetEntity(packet.NetworkId, out var entity))
+            {
+                var cam = Registry.HasComponent<CameraComponent>(entity) ? Registry.GetComponent<CameraComponent>(entity) : new CameraComponent();
+                cam.FieldOfView = packet.FieldOfView;
+                cam.IsPrimary = packet.IsPrimary;
+                cam.NearClip = packet.NearClip;
+                cam.FarClip = packet.FarClip;
+                
+                if (Registry.HasComponent<CameraComponent>(entity))
+                    Registry.GetComponent<CameraComponent>(entity) = cam;
+                else
+                    Registry.AddComponent(entity, cam);
+            }
+        });
+
+        _dispatcher.SubscribeReusable<UpdatePhysicsPacket>((packet, peer) =>
+        {
+            if (_transport.IsHost) _dispatcher.SendToAllExcept(packet, peer, DeliveryMethod.ReliableOrdered);
+            
+            if (_identityMap.TryGetEntity(packet.NetworkId, out var entity))
+            {
+                var rb = Registry.HasComponent<RigidBodyComponent>(entity) ? Registry.GetComponent<RigidBodyComponent>(entity) : new RigidBodyComponent();
+                rb.Mass = packet.Mass;
+                rb.LinearDrag = packet.LinearDrag;
+                rb.AngularDrag = packet.AngularDrag;
+                rb.UseGravity = packet.UseGravity;
+                rb.IsKinematic = packet.IsKinematic;
+                rb.Constraints = (RigidbodyConstraints)packet.Constraints;
+                
+                if (Registry.HasComponent<RigidBodyComponent>(entity))
+                    Registry.GetComponent<RigidBodyComponent>(entity) = rb;
+                else
+                    Registry.AddComponent(entity, rb);
+            }
+        });
+
+        _dispatcher.SubscribeReusable<UpdateScriptPacket>((packet, peer) =>
+        {
+            if (_transport.IsHost) _dispatcher.SendToAllExcept(packet, peer, DeliveryMethod.ReliableOrdered);
+            
+            if (_identityMap.TryGetEntity(packet.NetworkId, out var entity))
+            {
+                var sc = Registry.HasComponent<ScriptComponent>(entity) ? Registry.GetComponent<ScriptComponent>(entity) : new ScriptComponent();
+                sc.Scripts.Clear();
+                foreach(var s in packet.Scripts)
+                {
+                    sc.Scripts.Add(new ScriptData {
+                        ScriptTypeName = s.ScriptTypeName,
+                        FieldValues = new System.Collections.Generic.Dictionary<string, string>(s.FieldValues)
+                    });
+                }
+                
+                if (Registry.HasComponent<ScriptComponent>(entity))
+                    Registry.GetComponent<ScriptComponent>(entity) = sc;
+                else
+                    Registry.AddComponent(entity, sc);
+            }
+        });
+
+        _dispatcher.SubscribeReusable<LoadScenePacket>((packet, peer) =>
+        {
+            if (_transport.IsHost) _dispatcher.SendToAllExcept(packet, peer, DeliveryMethod.ReliableOrdered);
+            
+            if (!_transport.IsHost)
+            {
+                var ecs = _engine.GetModule<ERus.Engine.Modules.ECSModule>();
+                if (ecs != null)
+                {
+                    ecs.ActiveScene.Clear();
+                    _identityMap.ClearLocalMap();
+                    ConsoleLog.Log($"[Rede] Host iniciou carregamento da cena {packet.SceneName}. Cena limpa localmente.");
+                }
+            }
+        });
+
+        // Assina download de assets
+        var assetSync = _engine.GetModule<ERus.Engine.Modules.NetworkModule>()?.NetworkManager?.AssetSync;
+        if (assetSync != null)
+        {
+            assetSync.OnAssetDownloaded += (hash, path) =>
+            {
+                _completedDownloads.Enqueue((hash, path));
+                ConsoleLog.Log($"[Rede] Asset baixado e enfileirado para swap de malha: {hash}");
+            };
+        }
     }
 
     public void SendTransform(int networkId, Vector3D<float> position, Vector3D<float> rotation, Vector3D<float> scale, byte updateFlags = 7)
