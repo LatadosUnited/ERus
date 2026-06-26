@@ -26,6 +26,19 @@ public class NetworkModule : IEngineModule
 
     private Core.Engine _engine;
 
+    private string? _pendingConnectIp;
+    private int _pendingConnectPort;
+    private string? _pendingToken;
+    private string? _pendingProjectId;
+
+    public void SetPendingRemoteConnection(string ip, int port, string token, string projectId)
+    {
+        _pendingConnectIp = ip;
+        _pendingConnectPort = port;
+        _pendingToken = token;
+        _pendingProjectId = projectId;
+    }
+
     public void Initialize(Core.Engine engine)
     {
         _engine = engine;
@@ -37,6 +50,11 @@ public class NetworkModule : IEngineModule
         {
             var replicationSystem = new EntityReplicationSystem(ecs.ActiveScene.Registry, _engine, NetworkManager.Transport, NetworkManager.Dispatcher, NetworkManager.IdentityMap);
             ecs.AddSystem(replicationSystem);
+        }
+
+        if (!string.IsNullOrEmpty(_pendingConnectIp))
+        {
+            StartClientWithAuth(_pendingConnectIp, _pendingConnectPort, _pendingToken ?? "", _pendingProjectId ?? "");
         }
     }
 

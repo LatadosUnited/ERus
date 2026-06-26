@@ -26,6 +26,8 @@ public class RemoteProjectData
     
     // Foreign Key
     public int OwnerId { get; set; }
+    
+    [System.Text.Json.Serialization.JsonIgnore]
     public UserAccount Owner { get; set; } = null!;
 }
 
@@ -129,7 +131,7 @@ public static class ServerDatabase
                 OwnerId = account.Id
             };
 
-            db.Projects.Add(newProject);
+            account.Projects.Add(newProject);
             db.SaveChanges();
             
             return newProject;

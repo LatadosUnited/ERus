@@ -63,7 +63,7 @@ class Program
         else
         {
             System.Console.WriteLine("[Editor] Iniciando no modo Cliente Remoto...");
-            networkModule.StartClientWithAuth(connectIp, connectPort, token ?? "", remoteProject ?? "");
+            networkModule.SetPendingRemoteConnection(connectIp, connectPort, token ?? "", remoteProject ?? "");
         }
 
         // Trava a Thread no Game Loop do Silk.NET

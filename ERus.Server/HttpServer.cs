@@ -101,8 +101,9 @@ public class HttpServer
         }
         catch (Exception ex)
         {
+            Console.WriteLine($"[API] Erro interno 500 no request {request.Url?.AbsolutePath}: {ex.ToString()}");
             response.StatusCode = 500;
-            await SendJsonResponse(response, new { error = "Internal Server Error", message = ex.Message });
+            await SendJsonResponse(response, new { error = $"Internal Server Error: {ex.Message}" });
         }
         finally
         {
@@ -112,7 +113,7 @@ public class HttpServer
 
     private async Task HandleRegisterAsync(HttpListenerRequest request, HttpListenerResponse response)
     {
-        using var reader = new StreamReader(request.InputStream, request.ContentEncoding);
+        using var reader = new StreamReader(request.InputStream, request.ContentEncoding ?? Encoding.UTF8);
         string body = await reader.ReadToEndAsync();
         var data = JsonSerializer.Deserialize<LoginRequest>(body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
@@ -148,7 +149,7 @@ public class HttpServer
 
     private async Task HandleLoginAsync(HttpListenerRequest request, HttpListenerResponse response)
     {
-        using var reader = new StreamReader(request.InputStream, request.ContentEncoding);
+        using var reader = new StreamReader(request.InputStream, request.ContentEncoding ?? Encoding.UTF8);
         string body = await reader.ReadToEndAsync();
         var loginData = JsonSerializer.Deserialize<LoginRequest>(body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
@@ -228,7 +229,7 @@ public class HttpServer
             return;
         }
 
-        using var reader = new StreamReader(request.InputStream, request.ContentEncoding);
+        using var reader = new StreamReader(request.InputStream, request.ContentEncoding ?? Encoding.UTF8);
         string body = await reader.ReadToEndAsync();
         var data = JsonSerializer.Deserialize<CreateProjectRequest>(body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
@@ -273,7 +274,7 @@ public class HttpServer
             return;
         }
 
-        using var reader = new StreamReader(request.InputStream, request.ContentEncoding);
+        using var reader = new StreamReader(request.InputStream, request.ContentEncoding ?? Encoding.UTF8);
         string body = await reader.ReadToEndAsync();
         var data = JsonSerializer.Deserialize<UpdateProjectRequest>(body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
