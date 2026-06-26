@@ -56,11 +56,10 @@ class Program
         engine.AddModule(networkModule);   // 5. Sincronização de Rede
         
         // Módulos específicos do Editor
-        if (string.IsNullOrEmpty(connectIp))
-        {
-            engine.AddModule(new EditorUIModule());  // Desenha UI local
-        }
-        else
+        engine.AddModule(new EditorUIModule());
+
+        // Cliente Remoto
+        if (!string.IsNullOrEmpty(connectIp))
         {
             System.Console.WriteLine("[Editor] Iniciando no modo Cliente Remoto...");
             networkModule.SetPendingRemoteConnection(connectIp, connectPort, token ?? "", remoteProject ?? "");
