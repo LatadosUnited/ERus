@@ -20,6 +20,9 @@ class Program
         var options = WindowOptions.Default;
         options.Size = new Vector2D<int>(800, 600);
         options.Title = "ERus Hub";
+        options.VSync = true;
+        options.UpdatesPerSecond = 0;
+        options.FramesPerSecond = 0;
 
         _window = Window.Create(options);
 
@@ -60,6 +63,9 @@ class Program
         _hubUI.Draw();
 
         _imGuiController.Render();
+
+        // Pausa de 33ms (~30 FPS) para uso ultra-baixo de CPU já que é apenas um Launcher
+        System.Threading.Thread.Sleep(33);
     }
 
     private static void OnResize(Vector2D<int> size)

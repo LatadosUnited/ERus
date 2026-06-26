@@ -106,6 +106,9 @@ public class Engine : IDisposable
         var options = WindowOptions.Default;
         options.Size = new Vector2D<int>(1280, 720);
         options.Title = "ERus 3D Engine";
+        options.VSync = true;
+        options.UpdatesPerSecond = 0;
+        options.FramesPerSecond = 0;
         
         Window = Silk.NET.Windowing.Window.Create(options);
 
@@ -197,6 +200,9 @@ public class Engine : IDisposable
         {
             module.Render(deltaTime);
         }
+
+        // Previne uso extremo de CPU caso o VSync falhe ou seja desativado pelo driver
+        System.Threading.Thread.Sleep(10);
     }
 
     /// <summary>
