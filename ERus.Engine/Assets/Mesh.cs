@@ -9,18 +9,20 @@ public class Mesh : IDisposable
     public List<Vertex> Vertices { get; private set; }
     public List<uint> Indices { get; private set; }
     public List<Texture> Textures { get; private set; }
+    public float BoundingRadius { get; private set; }
 
     private uint _vao;
     private uint _vbo;
     private uint _ebo;
     private GL _gl;
 
-    public Mesh(GL gl, List<Vertex> vertices, List<uint> indices, List<Texture> textures)
+    public Mesh(GL gl, List<Vertex> vertices, List<uint> indices, List<Texture> textures, float boundingRadius = 0f)
     {
         _gl = gl;
         Vertices = vertices;
         Indices = indices;
         Textures = textures;
+        BoundingRadius = boundingRadius;
 
         SetupMesh();
     }

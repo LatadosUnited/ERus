@@ -5,13 +5,43 @@ using System.IO;
 using System.Numerics;
 using System.Threading.Tasks;
 using System.Linq;
+using System.Net.Http;
+using System.Text.Json;
 using ImGuiNET;
-
 namespace ERus.Hub;
 
 public class HubUI
 {
     private HubConfig _config;
+    
+    // Add Server Modal State
+    private bool _triggerAddServerModal = false;
+    private string _loginAlias = "";
+    private string _loginIp = "127.0.0.1";
+    private string _loginUsername = "";
+    private string _loginPassword = "";
+    private string _loginError = "";
+    private bool _isAuthenticating = false;
+
+    // Create Project Modal State
+    private bool _triggerCreateProjectModal = false;
+    private bool _closeCreateProjectModal = false;
+    private string _createProjectName = "";
+    private string _createProjectEngineVersion = "v0.1.0";
+    private string _createProjectError = "";
+    private bool _isCreatingProject = false;
+
+    // Edit Remote Project State
+    private bool _triggerChangeRemoteVersionModal = false;
+    private bool _closeChangeRemoteVersionModal = false;
+    private RemoteProject? _projectToEditRemoteVersion = null;
+    private string _editRemoteEngineVersion = "";
+    private string _editRemoteProjectError = "";
+    private bool _isEditingRemoteProject = false;
+    private SavedServer? _activeServer = null;
+    private bool _isFetchingProjects = false;
+    private List<RemoteProject> _remoteProjects = new List<RemoteProject>();
+    private HttpClient _httpClient = new HttpClient();
     
     // Modal New Project state
     private bool _triggerNewProjectModal = false;
@@ -42,6 +72,11 @@ public class HubUI
     // Modal Delete Project state
     private ProjectData? _projectToDelete = null;
     private bool _triggerDeleteProjectModal = false;
+    
+    // Modal Change Engine Version state
+    private ProjectData? _projectToEditVersion = null;
+    private bool _triggerChangeVersionModal = false;
+    private string _editEngineVersion = "";
     
     // Config state
     private string _installDirectoryPath = "";
@@ -142,11 +177,369 @@ public class HubUI
             DrawFooter();
         }
 
+        if (_triggerAddServerModal)
+        {
+            ImGui.OpenPopup("Add Server");
+            _triggerAddServerModal = false;
+        }
+        
+        if (_triggerCreateProjectModal)
+        {
+            ImGui.OpenPopup("Create Project");
+            _triggerCreateProjectModal = false;
+        }
+
+        if (_triggerChangeRemoteVersionModal)
+        {
+            ImGui.OpenPopup("Edit Engine Version");
+            _triggerChangeRemoteVersionModal = false;
+        }
+
+        DrawAddServerModal();
+        DrawCreateProjectModal();
         DrawNewProjectModal();
         DrawAddEngineModal();
         DrawDeleteProjectModal();
+        DrawChangeVersionModal();
+        DrawChangeRemoteVersionModal();
 
         ImGui.End();
+    }
+
+    private void DrawAddServerModal()
+    {
+        bool dummy = true;
+        if (ImGui.BeginPopupModal("Add Server", ref dummy, ImGuiWindowFlags.AlwaysAutoResize))
+        {
+            ImGui.InputText("Alias", ref _loginAlias, 64);
+            ImGui.InputText("Server IP", ref _loginIp, 64);
+            ImGui.InputText("Username", ref _loginUsername, 64);
+            ImGui.InputText("Password", ref _loginPassword, 64, ImGuiInputTextFlags.Password);
+
+            ImGui.Spacing();
+
+            if (!string.IsNullOrEmpty(_loginError))
+            {
+                ImGui.TextColored(new Vector4(1, 0, 0, 1), _loginError);
+            }
+
+            ImGui.Spacing();
+            ImGui.BeginDisabled(_isAuthenticating);
+            if (ImGui.Button("Connect & Save", new Vector2(150, 30)))
+            {
+                AttemptAuth(false);
+            }
+            ImGui.SameLine();
+            if (ImGui.Button("Register", new Vector2(100, 30)))
+            {
+                AttemptAuth(true);
+            }
+            ImGui.EndDisabled();
+            ImGui.SameLine();
+            if (ImGui.Button("Cancel", new Vector2(100, 30)))
+            {
+                ImGui.CloseCurrentPopup();
+            }
+
+            ImGui.EndPopup();
+        }
+    }
+
+    private void DrawCreateProjectModal()
+    {
+        bool dummy = true;
+        if (ImGui.BeginPopupModal("Create Project", ref dummy, ImGuiWindowFlags.AlwaysAutoResize))
+        {
+            if (_closeCreateProjectModal)
+            {
+                ImGui.CloseCurrentPopup();
+                _closeCreateProjectModal = false;
+            }
+
+            ImGui.InputText("Name", ref _createProjectName, 64);
+            
+            // Engine Version Dropdown
+            if (ImGui.BeginCombo("Engine Version", _createProjectEngineVersion))
+            {
+                foreach (var install in _config.Installs)
+                {
+                    bool isSelected = (_createProjectEngineVersion == install.VersionName);
+                    if (ImGui.Selectable(install.VersionName, isSelected))
+                    {
+                        _createProjectEngineVersion = install.VersionName;
+                    }
+                    if (isSelected)
+                    {
+                        ImGui.SetItemDefaultFocus();
+                    }
+                }
+                ImGui.EndCombo();
+            }
+
+            ImGui.Spacing();
+
+            if (!string.IsNullOrEmpty(_createProjectError))
+            {
+                ImGui.TextColored(new Vector4(1, 0, 0, 1), _createProjectError);
+            }
+
+            ImGui.Spacing();
+            ImGui.BeginDisabled(_isCreatingProject || string.IsNullOrWhiteSpace(_createProjectEngineVersion));
+            if (ImGui.Button("Create", new Vector2(100, 30)))
+            {
+                AttemptCreateProject();
+            }
+            ImGui.EndDisabled();
+            ImGui.SameLine();
+            if (ImGui.Button("Cancel", new Vector2(100, 30)))
+            {
+                ImGui.CloseCurrentPopup();
+            }
+
+            ImGui.EndPopup();
+        }
+    }
+
+    private void AttemptAuth(bool isRegister)
+    {
+        _isAuthenticating = true;
+        _loginError = "";
+
+        Task.Run(async () =>
+        {
+            try
+            {
+                var payload = new { Username = _loginUsername, Password = _loginPassword };
+                var json = JsonSerializer.Serialize(payload);
+                var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+
+                string endpoint = isRegister ? "/api/register" : "/api/login";
+                var response = await _httpClient.PostAsync($"http://{_loginIp}:8080{endpoint}", content);
+                string responseBody = await response.Content.ReadAsStringAsync();
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var result = JsonSerializer.Deserialize<JsonElement>(responseBody);
+                    string token = result.GetProperty("token").GetString() ?? "";
+                    
+                    var existing = _config.Servers.FirstOrDefault(s => s.Ip == _loginIp && s.Username == _loginUsername);
+                    if (existing != null)
+                    {
+                        existing.Token = token;
+                        existing.Alias = _loginAlias;
+                        _activeServer = existing;
+                    }
+                    else
+                    {
+                        var newServer = new SavedServer
+                        {
+                            Alias = _loginAlias,
+                            Ip = _loginIp,
+                            Username = _loginUsername,
+                            Token = token
+                        };
+                        _config.Servers.Add(newServer);
+                        _activeServer = newServer;
+                    }
+
+                    _ = ConfigManager.SaveAsync(_config);
+                    
+                    ParseProjectsResponse(result);
+                    
+                    _triggerAddServerModal = false;
+                }
+                else
+                {
+                    try 
+                    {
+                        var errResult = JsonSerializer.Deserialize<JsonElement>(responseBody);
+                        if (errResult.TryGetProperty("error", out var errProp))
+                        {
+                            _loginError = errProp.GetString() ?? "Unknown error.";
+                        }
+                        else 
+                        {
+                            _loginError = isRegister ? "Registration failed." : "Login failed or Invalid Credentials.";
+                        }
+                    }
+                    catch
+                    {
+                        _loginError = isRegister ? "Registration failed." : "Login failed or Invalid Credentials.";
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _loginError = $"Network Error: {ex.Message}";
+            }
+            finally
+            {
+                _isAuthenticating = false;
+            }
+        });
+    }
+
+    private void AttemptCreateProject()
+    {
+        if (_activeServer == null) return;
+
+        _isCreatingProject = true;
+        _createProjectError = "";
+
+        Task.Run(async () =>
+        {
+            try
+            {
+                var payload = new { Name = _createProjectName, EngineVersion = _createProjectEngineVersion };
+                var json = JsonSerializer.Serialize(payload);
+                var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+
+                _httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _activeServer.Token);
+                var response = await _httpClient.PostAsync($"http://{_activeServer.Ip}:8080/api/projects", content);
+                
+                string responseBody = await response.Content.ReadAsStringAsync();
+
+                if (response.IsSuccessStatusCode)
+                {
+                    _closeCreateProjectModal = true;
+                    FetchProjectsForActiveServer(); // Atualiza a lista
+                }
+                else
+                {
+                    try 
+                    {
+                        var errResult = JsonSerializer.Deserialize<JsonElement>(responseBody);
+                        if (errResult.TryGetProperty("error", out var errProp))
+                        {
+                            _createProjectError = errProp.GetString() ?? "Unknown error.";
+                        }
+                        else 
+                        {
+                            _createProjectError = "Failed to create project.";
+                        }
+                    }
+                    catch
+                    {
+                        _createProjectError = "Failed to create project.";
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _createProjectError = $"Network Error: {ex.Message}";
+            }
+            finally
+            {
+                _isCreatingProject = false;
+            }
+        });
+    }
+
+    private void AttemptChangeRemoteProjectVersion()
+    {
+        if (_activeServer == null || _projectToEditRemoteVersion == null) return;
+
+        _isEditingRemoteProject = true;
+        _editRemoteProjectError = "";
+
+        Task.Run(async () =>
+        {
+            try
+            {
+                var payload = new { Id = _projectToEditRemoteVersion.Id, EngineVersion = _editRemoteEngineVersion };
+                var json = JsonSerializer.Serialize(payload);
+                var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+
+                _httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _activeServer.Token);
+                var response = await _httpClient.PutAsync($"http://{_activeServer.Ip}:8080/api/projects", content);
+                
+                string responseBody = await response.Content.ReadAsStringAsync();
+
+                if (response.IsSuccessStatusCode)
+                {
+                    _closeChangeRemoteVersionModal = true;
+                    FetchProjectsForActiveServer();
+                }
+                else
+                {
+                    try 
+                    {
+                        var errResult = JsonSerializer.Deserialize<JsonElement>(responseBody);
+                        if (errResult.TryGetProperty("error", out var errProp))
+                        {
+                            _editRemoteProjectError = errProp.GetString() ?? "Unknown error.";
+                        }
+                        else 
+                        {
+                            _editRemoteProjectError = "Failed to update project.";
+                        }
+                    }
+                    catch
+                    {
+                        _editRemoteProjectError = "Failed to update project.";
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _editRemoteProjectError = $"Network Error: {ex.Message}";
+            }
+            finally
+            {
+                _isEditingRemoteProject = false;
+            }
+        });
+    }
+
+    private void FetchProjectsForActiveServer()
+    {
+        if (_activeServer == null) return;
+        _isFetchingProjects = true;
+        
+        Task.Run(async () =>
+        {
+            try
+            {
+                _httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _activeServer.Token);
+                var response = await _httpClient.GetAsync($"http://{_activeServer.Ip}:8080/api/projects");
+                
+                if (response.IsSuccessStatusCode)
+                {
+                    string body = await response.Content.ReadAsStringAsync();
+                    var result = JsonSerializer.Deserialize<JsonElement>(body);
+                    ParseProjectsResponse(result);
+                }
+                else
+                {
+                    _errorMessage = $"Failed to fetch projects. Token might be invalid.";
+                    _activeServer = null; // Kick out
+                }
+            }
+            catch (Exception ex)
+            {
+                _errorMessage = $"Failed to connect to server: {ex.Message}";
+                _activeServer = null;
+            }
+            finally
+            {
+                _isFetchingProjects = false;
+            }
+        });
+    }
+
+    private void ParseProjectsResponse(JsonElement result)
+    {
+        _remoteProjects.Clear();
+        foreach (var p in result.GetProperty("projects").EnumerateArray())
+        {
+            _remoteProjects.Add(new RemoteProject
+            {
+                Id = p.GetProperty("id").GetString() ?? "",
+                Name = p.GetProperty("name").GetString() ?? "",
+                EngineVersion = p.GetProperty("engineVersion").GetString() ?? "",
+                LastModified = p.GetProperty("lastModified").GetString() ?? ""
+            });
+        }
     }
 
     private void DrawSidebar()
@@ -173,89 +566,123 @@ public class HubUI
 
     private void DrawProjectsTab()
     {
+        ImGui.Columns(2, "ProjColumns", true);
+        ImGui.SetColumnWidth(0, 250f);
+
+        // Left Column: Servers
         ImGui.Spacing();
-        ImGui.InputTextWithHint("##Search", "Search projects...", ref _searchQuery, 128);
-        ImGui.SameLine(ImGui.GetContentRegionAvail().X - 120);
-        if (ImGui.Button("New Project", new Vector2(120, 26)))
+        ImGui.Text("Saved Servers");
+        ImGui.SameLine(ImGui.GetColumnWidth(0) - 100);
+        if (ImGui.Button("+ Add", new Vector2(80, 24)))
         {
-            _triggerNewProjectModal = true;
+            _triggerAddServerModal = true;
+        }
+        ImGui.Separator();
+        
+        if (_config.Servers.Count == 0)
+        {
+            ImGui.TextDisabled("No servers added.");
+        }
+        else
+        {
+            foreach (var srv in _config.Servers.ToArray())
+            {
+                bool isSelected = (_activeServer == srv);
+                if (ImGui.Selectable($"{srv.Alias}\n({srv.Ip})", isSelected, ImGuiSelectableFlags.None, new Vector2(0, 40)))
+                {
+                    _activeServer = srv;
+                    FetchProjectsForActiveServer();
+                }
+                
+                if (ImGui.BeginPopupContextItem($"Menu_{srv.Ip}_{srv.Username}"))
+                {
+                    if (ImGui.Selectable("Remove Server"))
+                    {
+                        if (_activeServer == srv) _activeServer = null;
+                        _config.Servers.Remove(srv);
+                        _ = ConfigManager.SaveAsync(_config);
+                    }
+                    ImGui.EndPopup();
+                }
+            }
         }
 
+        ImGui.NextColumn();
+
+        // Right Column: Projects
+        if (_activeServer == null)
+        {
+            ImGui.TextDisabled("Select a server to view projects.");
+            ImGui.Columns(1);
+            return;
+        }
+
+        ImGui.Spacing();
+        ImGui.Text($"Projects on {_activeServer.Alias} ({_activeServer.Username})");
+        ImGui.SameLine(ImGui.GetColumnWidth(1) - 130);
+        if (ImGui.Button("+ Create Project", new Vector2(120, 24)))
+        {
+            _triggerCreateProjectModal = true;
+            _createProjectName = "";
+            if (_config.Installs.Count > 0)
+            {
+                _createProjectEngineVersion = _config.Installs[0].VersionName;
+            }
+        }
         ImGui.Spacing();
         ImGui.Separator();
         ImGui.Spacing();
 
-        if (_config.Projects.Count == 0)
+        if (_isFetchingProjects)
         {
-            ImGui.TextDisabled("You have no projects yet.");
+            ImGui.TextDisabled("Fetching projects...");
+            ImGui.Columns(1);
             return;
         }
 
-        var sortedProjects = _config.Projects.OrderByDescending(p => p.LastModified).ToArray();
-        
+        if (_remoteProjects.Count == 0)
+        {
+            ImGui.TextDisabled("No remote projects found on this server.");
+            ImGui.Columns(1);
+            return;
+        }
+
         float windowVisibleX2 = ImGui.GetWindowPos().X + ImGui.GetWindowContentRegionMax().X;
         float cardWidth = 240f;
         float cardHeight = 110f;
         float spacing = ImGui.GetStyle().ItemSpacing.X;
 
         int i = 0;
-        foreach (var proj in sortedProjects)
+        foreach (var proj in _remoteProjects)
         {
-            if (!string.IsNullOrEmpty(_searchQuery) && !proj.Name.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase))
-                continue;
+            ImGui.PushID(proj.Id);
 
-            ImGui.PushID(proj.Path);
-
-            bool exists = Directory.Exists(proj.Path);
-            
             if (ImGui.BeginChild($"Card_{i}", new Vector2(cardWidth, cardHeight), ImGuiChildFlags.Border, ImGuiWindowFlags.NoScrollbar))
             {
                 Vector2 cursorPos = ImGui.GetCursorPos();
                 
                 ImGui.PushStyleVar(ImGuiStyleVar.SelectableTextAlign, new Vector2(0, 0));
-                if (ImGui.Selectable("##card_select", false, ImGuiSelectableFlags.None, new Vector2(cardWidth, cardHeight)) && exists)
+                if (ImGui.Selectable("##card_select", false, ImGuiSelectableFlags.AllowOverlap, new Vector2(cardWidth, cardHeight)))
                 {
-                    OpenProject(proj);
+                    OpenRemoteProject(proj);
                 }
                 ImGui.PopStyleVar();
 
                 ImGui.SetCursorPos(cursorPos); // Restore
 
-                if (!exists) ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1, 0.3f, 0.3f, 1));
-                
                 ImGui.Text(proj.Name);
-                
-                if (!exists)
-                {
-                    ImGui.Text("(Not found)");
-                    ImGui.PopStyleColor();
-                }
-                else
-                {
-                    ImGui.TextDisabled(proj.EngineVersion);
-                }
+                ImGui.TextDisabled(proj.EngineVersion);
 
                 ImGui.Spacing();
-                ImGui.TextDisabled(proj.LastModified.ToString("yyyy-MM-dd HH:mm"));
+                ImGui.TextDisabled(proj.LastModified);
 
-                ImGui.SetCursorPos(new Vector2(cardWidth - 35, 5));
-                if (ImGui.Button("..."))
+                if (ImGui.BeginPopupContextItem($"Menu_Proj_{proj.Id}"))
                 {
-                    ImGui.OpenPopup("ProjMenu");
-                }
-
-                if (ImGui.BeginPopup("ProjMenu"))
-                {
-                    if (ImGui.Selectable("Open") && exists) OpenProject(proj);
-                    if (ImGui.Selectable("Remove from List"))
+                    if (ImGui.Selectable("Edit Version"))
                     {
-                        _config.Projects.Remove(proj);
-                        _ = ConfigManager.SaveAsync(_config);
-                    }
-                    if (ImGui.Selectable("Delete from Disk"))
-                    {
-                        _projectToDelete = proj;
-                        _triggerDeleteProjectModal = true;
+                        _projectToEditRemoteVersion = proj;
+                        _editRemoteEngineVersion = proj.EngineVersion;
+                        _triggerChangeRemoteVersionModal = true;
                     }
                     ImGui.EndPopup();
                 }
@@ -265,7 +692,7 @@ public class HubUI
 
             float lastCardMaxX = ImGui.GetItemRectMax().X;
             float nextCardMaxX = lastCardMaxX + spacing + cardWidth;
-            if (i < sortedProjects.Length - 1 && nextCardMaxX < windowVisibleX2)
+            if (i < _remoteProjects.Count - 1 && nextCardMaxX < windowVisibleX2)
             {
                 ImGui.SameLine();
             }
@@ -273,6 +700,8 @@ public class HubUI
             ImGui.PopID();
             i++;
         }
+        
+        ImGui.Columns(1);
     }
 
     private void DrawInstallsTab()
@@ -585,19 +1014,125 @@ public class HubUI
         }
     }
 
-    private void OpenProject(ProjectData project)
+    private void DrawChangeVersionModal()
+    {
+        if (_triggerChangeVersionModal)
+        {
+            ImGui.OpenPopup("Change Engine Version");
+            _triggerChangeVersionModal = false;
+        }
+
+        bool dummy = true;
+        if (ImGui.BeginPopupModal("Change Engine Version", ref dummy, ImGuiWindowFlags.AlwaysAutoResize))
+        {
+            if (_projectToEditVersion != null)
+            {
+                ImGui.Text($"Change Engine Version for: {_projectToEditVersion.Name}");
+                ImGui.Spacing();
+                
+                if (ImGui.BeginCombo("Engine Version", _editEngineVersion))
+                {
+                    foreach (var inst in _config.Installs)
+                    {
+                        bool isSelected = (inst.VersionName == _editEngineVersion);
+                        if (ImGui.Selectable(inst.VersionName, isSelected))
+                        {
+                            _editEngineVersion = inst.VersionName;
+                        }
+                        if (isSelected) ImGui.SetItemDefaultFocus();
+                    }
+                    ImGui.EndCombo();
+                }
+
+                ImGui.Spacing();
+                ImGui.Separator();
+                ImGui.Spacing();
+
+                if (ImGui.Button("Save", new Vector2(120, 0)))
+                {
+                    _projectToEditVersion.EngineVersion = _editEngineVersion;
+                    _projectToEditVersion.LastModified = DateTime.Now;
+                    _ = ConfigManager.SaveAsync(_config);
+                    
+                    _projectToEditVersion = null;
+                    ImGui.CloseCurrentPopup();
+                }
+                ImGui.SameLine();
+                if (ImGui.Button("Cancel", new Vector2(120, 0)))
+                {
+                    _projectToEditVersion = null;
+                    ImGui.CloseCurrentPopup();
+                }
+            }
+            ImGui.EndPopup();
+        }
+    }
+
+    private void DrawChangeRemoteVersionModal()
+    {
+        bool dummy = true;
+        if (ImGui.BeginPopupModal("Edit Engine Version", ref dummy, ImGuiWindowFlags.AlwaysAutoResize))
+        {
+            if (_closeChangeRemoteVersionModal)
+            {
+                ImGui.CloseCurrentPopup();
+                _closeChangeRemoteVersionModal = false;
+            }
+
+            if (_projectToEditRemoteVersion != null)
+            {
+                ImGui.Text($"Editing: {_projectToEditRemoteVersion.Name}");
+                ImGui.Spacing();
+
+                if (ImGui.BeginCombo("Engine Version", _editRemoteEngineVersion))
+                {
+                    foreach (var install in _config.Installs)
+                    {
+                        bool isSelected = (_editRemoteEngineVersion == install.VersionName);
+                        if (ImGui.Selectable(install.VersionName, isSelected))
+                        {
+                            _editRemoteEngineVersion = install.VersionName;
+                        }
+                        if (isSelected) ImGui.SetItemDefaultFocus();
+                    }
+                    ImGui.EndCombo();
+                }
+
+                ImGui.Spacing();
+
+                if (!string.IsNullOrEmpty(_editRemoteProjectError))
+                {
+                    ImGui.TextColored(new Vector4(1, 0, 0, 1), _editRemoteProjectError);
+                }
+
+                ImGui.Spacing();
+                ImGui.BeginDisabled(_isEditingRemoteProject || string.IsNullOrWhiteSpace(_editRemoteEngineVersion));
+                if (ImGui.Button("Save", new Vector2(100, 30)))
+                {
+                    AttemptChangeRemoteProjectVersion();
+                }
+                ImGui.EndDisabled();
+                ImGui.SameLine();
+                if (ImGui.Button("Cancel", new Vector2(100, 30)))
+                {
+                    ImGui.CloseCurrentPopup();
+                }
+            }
+
+            ImGui.EndPopup();
+        }
+    }
+
+    private void OpenRemoteProject(RemoteProject project)
     {
         var install = _config.Installs.Find(i => i.VersionName == project.EngineVersion);
         if (install == null || !File.Exists(install.ExecutablePath))
         {
-            _errorMessage = $"Executável da engine não encontrado para a versão {project.EngineVersion}";
+            _errorMessage = $"Executável da engine não encontrado para a versão {project.EngineVersion}. Instale a engine localmente primeiro.";
             return;
         }
 
-        project.LastModified = DateTime.Now;
-        _ = ConfigManager.SaveAsync(_config);
-
-        _openingProject = project.Path;
+        _openingProject = project.Id;
         Task.Run(async () =>
         {
             try
@@ -605,7 +1140,7 @@ public class HubUI
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = install.ExecutablePath,
-                    Arguments = $"--project \"{project.Path}\"",
+                    Arguments = $"--connect {_activeServer?.Ip} --port 27015 --token {_activeServer?.Token} --remote-project {project.Id}",
                     UseShellExecute = false,
                     WorkingDirectory = Path.GetDirectoryName(install.ExecutablePath)
                 };
@@ -621,7 +1156,7 @@ public class HubUI
                         }
                     };
                 }
-                await Task.Delay(1000); // Dar um feedback visual rápido
+                await Task.Delay(1000); 
             }
             catch (Exception ex)
             {

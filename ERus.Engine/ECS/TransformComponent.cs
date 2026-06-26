@@ -4,6 +4,7 @@ namespace ERus.Engine.ECS;
 
 public struct TransformComponent : IComponent
 {
+    [NonSerializedComponent]
     public bool IsDirty { get; set; } = false;
 
     private Vector3D<float> _position = Vector3D<float>.Zero;

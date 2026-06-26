@@ -38,6 +38,11 @@ public class GameViewWindow : EditorWindow
 
         var cursorPos = ImGui.GetCursorScreenPos();
         ImGui.Image((IntPtr)textureId, size, new Vector2(0, 1), new Vector2(1, 0));
+
+        // Injeta a posição do mouse na API de Scripting (relativa a este GameView)
+        var io = ImGui.GetIO();
+        var mousePos = io.MousePos - cursorPos;
+        ERus.Engine.Input.Input.MousePosition = new Vector2(mousePos.X, mousePos.Y);
     }
 }
 

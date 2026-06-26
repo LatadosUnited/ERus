@@ -1,5 +1,6 @@
 using ERus.Engine.Core;
 using System;
+using System.Reflection;
 
 namespace ERus.Engine.ECS;
 
@@ -11,20 +12,34 @@ public class Scene
     {
         Registry = new Registry();
         
-        // Registrar componentes essenciais
-        Registry.RegisterComponent<TransformComponent>();
-        Registry.RegisterComponent<TagComponent>();
-        Registry.RegisterComponent<MeshComponent>();
-        Registry.RegisterComponent<NetworkIdentityComponent>();
-        Registry.RegisterComponent<NetworkInterpolationComponent>();
-        Registry.RegisterComponent<CameraComponent>();
-        Registry.RegisterComponent<ScriptComponent>();
-        Registry.RegisterComponent<RelationshipComponent>();
-        Registry.RegisterComponent<RigidBodyComponent>();
-        Registry.RegisterComponent<ColliderComponent>();
-        Registry.RegisterComponent<JointComponent>();
-        Registry.RegisterComponent<AnimatorComponent>();
+        // Auto-registro: escaneia o assembly em busca de todos os structs que implementam IComponent
+        var registerMethod = typeof(Registry).GetMethod("RegisterComponent")!;
+        foreach (var type in Assembly.GetExecutingAssembly().GetTypes())
+        {
+            if (type.IsValueType && !type.IsAbstract && typeof(IComponent).IsAssignableFrom(type) && type != typeof(IComponent))
+            {
+                registerMethod.MakeGenericMethod(type).Invoke(Registry, null);
+            }
+        }
     }
+
+    /// <summary>
+    /// A entidade que possui a Camera primária (MainCamera) da cena atual.
+    /// Retorna null se nenhuma for encontrada.
+    /// </summary>
+    public Entity? MainCamera 
+    {
+        get 
+        {
+            foreach (var entity in Registry.View<CameraComponent>())
+            {
+                var cam = Registry.GetComponent<CameraComponent>(entity);
+                if (cam.IsPrimary) return entity;
+            }
+            return null;
+        }
+    }
+
 
     public void Clear()
     {

@@ -8,8 +8,11 @@ namespace ERus.Engine.Graphics;
 public class SceneRenderer : IDisposable
 {
     private readonly GL _gl;
-    private uint _vao;
-    private uint _vbo;
+    private uint[] _primVao = new uint[7];
+    private uint[] _primVbo = new uint[7];
+    private uint[] _primEbo = new uint[7];
+    private int[] _primIndexCount = new int[7];
+    private float[] _primBoundingRadius = new float[7];
     
     private uint _gridVao;
     private uint _gridVbo;
@@ -209,74 +212,23 @@ public class SceneRenderer : IDisposable
             _boneMatricesLocs[i] = _gl.GetUniformLocation(_assetShaderProgram, $"uFinalBonesMatrices[{i}]");
         }
 
-        // 3. Criar VBO e VAO
-        float[] vertices =
+        // 3. Criar VBOs, VAOs e EBOs para as Primitivas
+        var meshes = new MeshData[7];
+        meshes[(int)PrimitiveMeshType.Cube] = PrimitiveMeshGenerator.GenerateCube();
+        meshes[(int)PrimitiveMeshType.Sphere] = PrimitiveMeshGenerator.GenerateSphere();
+        meshes[(int)PrimitiveMeshType.Plane] = PrimitiveMeshGenerator.GeneratePlane();
+        meshes[(int)PrimitiveMeshType.Capsule] = PrimitiveMeshGenerator.GenerateCapsule();
+        meshes[(int)PrimitiveMeshType.Cylinder] = PrimitiveMeshGenerator.GenerateCylinder();
+        meshes[(int)PrimitiveMeshType.Quad] = PrimitiveMeshGenerator.GenerateQuad();
+
+        for (int i = 1; i <= 6; i++)
         {
-            // Posições           // Cores
-            -0.5f, -0.5f, -0.5f,  1.0f, 0.0f, 0.0f,
-             0.5f, -0.5f, -0.5f,  1.0f, 0.0f, 0.0f,
-             0.5f,  0.5f, -0.5f,  1.0f, 0.0f, 0.0f,
-             0.5f,  0.5f, -0.5f,  1.0f, 0.0f, 0.0f,
-            -0.5f,  0.5f, -0.5f,  1.0f, 0.0f, 0.0f,
-            -0.5f, -0.5f, -0.5f,  1.0f, 0.0f, 0.0f,
-
-            -0.5f, -0.5f,  0.5f,  0.0f, 1.0f, 0.0f,
-             0.5f, -0.5f,  0.5f,  0.0f, 1.0f, 0.0f,
-             0.5f,  0.5f,  0.5f,  0.0f, 1.0f, 0.0f,
-             0.5f,  0.5f,  0.5f,  0.0f, 1.0f, 0.0f,
-            -0.5f,  0.5f,  0.5f,  0.0f, 1.0f, 0.0f,
-            -0.5f, -0.5f,  0.5f,  0.0f, 1.0f, 0.0f,
-
-            -0.5f,  0.5f,  0.5f,  0.0f, 0.0f, 1.0f,
-            -0.5f,  0.5f, -0.5f,  0.0f, 0.0f, 1.0f,
-            -0.5f, -0.5f, -0.5f,  0.0f, 0.0f, 1.0f,
-            -0.5f, -0.5f, -0.5f,  0.0f, 0.0f, 1.0f,
-            -0.5f, -0.5f,  0.5f,  0.0f, 0.0f, 1.0f,
-            -0.5f,  0.5f,  0.5f,  0.0f, 0.0f, 1.0f,
-
-             0.5f,  0.5f,  0.5f,  1.0f, 1.0f, 0.0f,
-             0.5f,  0.5f, -0.5f,  1.0f, 1.0f, 0.0f,
-             0.5f, -0.5f, -0.5f,  1.0f, 1.0f, 0.0f,
-             0.5f, -0.5f, -0.5f,  1.0f, 1.0f, 0.0f,
-             0.5f, -0.5f,  0.5f,  1.0f, 1.0f, 0.0f,
-             0.5f,  0.5f,  0.5f,  1.0f, 1.0f, 0.0f,
-
-            -0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 1.0f,
-             0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 1.0f,
-             0.5f, -0.5f,  0.5f,  0.0f, 1.0f, 1.0f,
-             0.5f, -0.5f,  0.5f,  0.0f, 1.0f, 1.0f,
-            -0.5f, -0.5f,  0.5f,  0.0f, 1.0f, 1.0f,
-            -0.5f, -0.5f, -0.5f,  0.0f, 1.0f, 1.0f,
-
-            -0.5f,  0.5f, -0.5f,  1.0f, 0.0f, 1.0f,
-             0.5f,  0.5f, -0.5f,  1.0f, 0.0f, 1.0f,
-             0.5f,  0.5f,  0.5f,  1.0f, 0.0f, 1.0f,
-             0.5f,  0.5f,  0.5f,  1.0f, 0.0f, 1.0f,
-            -0.5f,  0.5f,  0.5f,  1.0f, 0.0f, 1.0f,
-            -0.5f,  0.5f, -0.5f,  1.0f, 0.0f, 1.0f
-        };
-
-        _vao = _gl.GenVertexArray();
-        _vbo = _gl.GenBuffer();
-
-        _gl.BindVertexArray(_vao);
-
-        _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _vbo);
-        fixed (float* buf = vertices)
-        {
-            _gl.BufferData(BufferTargetARB.ArrayBuffer, (nuint)(vertices.Length * sizeof(float)), buf, BufferUsageARB.StaticDraw);
+            if (meshes[i] != null)
+            {
+                CreatePrimitiveBuffers(meshes[i], out _primVao[i], out _primVbo[i], out _primEbo[i], out _primIndexCount[i]);
+                _primBoundingRadius[i] = meshes[i].BoundingRadius;
+            }
         }
-
-        // Atributo de Posição
-        _gl.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, 6 * sizeof(float), (void*)0);
-        _gl.EnableVertexAttribArray(0);
-
-        // Atributo de Cor
-        _gl.VertexAttribPointer(1, 3, VertexAttribPointerType.Float, false, 6 * sizeof(float), (void*)(3 * sizeof(float)));
-        _gl.EnableVertexAttribArray(1);
-
-        _gl.BindBuffer(BufferTargetARB.ArrayBuffer, 0);
-        _gl.BindVertexArray(0);
 
         // 4. Criar VBO e VAO para a Grade (Grid)
         // Tamanho 1000 gera uma grade de 2000x2000 unidades, o que cobre toda a cena na prática
@@ -414,6 +366,36 @@ public class SceneRenderer : IDisposable
         _gl.BindVertexArray(0);
     }
 
+    private unsafe void CreatePrimitiveBuffers(MeshData data, out uint vao, out uint vbo, out uint ebo, out int indexCount)
+    {
+        vao = _gl.GenVertexArray();
+        vbo = _gl.GenBuffer();
+        ebo = _gl.GenBuffer();
+        indexCount = data.Indices.Length;
+
+        _gl.BindVertexArray(vao);
+
+        _gl.BindBuffer(BufferTargetARB.ArrayBuffer, vbo);
+        fixed (float* v = data.Vertices)
+        {
+            _gl.BufferData(BufferTargetARB.ArrayBuffer, (nuint)(data.Vertices.Length * sizeof(float)), v, BufferUsageARB.StaticDraw);
+        }
+
+        _gl.BindBuffer(BufferTargetARB.ElementArrayBuffer, ebo);
+        fixed (uint* i = data.Indices)
+        {
+            _gl.BufferData(BufferTargetARB.ElementArrayBuffer, (nuint)(data.Indices.Length * sizeof(uint)), i, BufferUsageARB.StaticDraw);
+        }
+
+        _gl.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, 6 * sizeof(float), (void*)0);
+        _gl.EnableVertexAttribArray(0);
+
+        _gl.VertexAttribPointer(1, 3, VertexAttribPointerType.Float, false, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+        _gl.EnableVertexAttribArray(1);
+
+        _gl.BindVertexArray(0);
+    }
+
     private void GenerateArrow(System.Collections.Generic.List<float> buffer, Matrix4x4 transform, Vector3 baseColor)
     {
         // === Haste (Shaft) - Cubo alongado ===
@@ -483,7 +465,7 @@ public class SceneRenderer : IDisposable
                 // Fake Lighting calculation
                 float intensity = Vector3.Dot(norm, lightDir);
                 // Clamp de [0, 1] e mapeia para luz ambiente [0.5, 1.0]
-                intensity = 0.5f + Math.Max(0, intensity) * 0.5f;
+                intensity = 0.5f + System.Math.Max(0, intensity) * 0.5f;
                 var col = baseColor * intensity;
 
                 buffer.Add(pos.X); buffer.Add(pos.Y); buffer.Add(pos.Z);
@@ -495,7 +477,7 @@ public class SceneRenderer : IDisposable
         AddGeometry(pV, pN);
     }
 
-    public unsafe void Draw(Registry registry, Matrix4x4 viewMatrix, float aspectRatio, Entity? selectedEntity = null, bool isLocked = false, bool drawGrid = true, float fov = 45f, float nearClip = 0.1f, float farClip = 100f)
+    public unsafe void Draw(Registry registry, Matrix4x4 viewMatrix, Matrix4x4 projectionMatrix, Entity? selectedEntity = null, bool isLocked = false, bool drawGrid = true)
     {
         _gl.Enable(EnableCap.DepthTest); // Liga teste de profundidade 3D
         _gl.UseProgram(_shaderProgram);
@@ -506,8 +488,7 @@ public class SceneRenderer : IDisposable
         // View Matrix vem da Câmera Injetada
         Matrix4x4 view = viewMatrix;
         // Projection Matrix
-        float fovRad = fov * (MathF.PI / 180f);
-        Matrix4x4 proj = Matrix4x4.CreatePerspectiveFieldOfView(fovRad, aspectRatio, nearClip, farClip);
+        Matrix4x4 proj = projectionMatrix;
 
         _gl.UniformMatrix4(_viewLoc, 1, false, (float*)&view);
         _gl.UniformMatrix4(_projLoc, 1, false, (float*)&proj);
@@ -521,14 +502,46 @@ public class SceneRenderer : IDisposable
             _gl.DrawArrays(PrimitiveType.Lines, 0, (uint)_gridVertexCount);
         }
 
-        // --- Renderizar os Objetos 3D ---
-        _gl.BindVertexArray(_vao);
+        // --- Setup Frustum ---
+        Matrix4x4 viewProj = viewMatrix * projectionMatrix;
+        ERus.Engine.Math.Frustum frustum = new ERus.Engine.Math.Frustum(viewProj);
+
+        int entitiesCulled = 0;
+        int entitiesDrawn = 0;
 
         // Intera sobre os objetos físicos no mundo
         foreach (var entity in registry.View<TransformComponent, MeshComponent>())
         {
             ref var transform = ref registry.GetComponent<TransformComponent>(entity);
             ref var mesh = ref registry.GetComponent<MeshComponent>(entity);
+
+            // --- Culling ---
+            float baseRadius = 1.0f; // Default seguro
+            var assetManager = ERus.Engine.Assets.AssetManager.Get();
+            if (mesh.AssetGuid != System.Guid.Empty)
+            {
+                string? path = ERus.Engine.Core.Engine.Instance.AssetDatabase.GetPathByGuid(mesh.AssetGuid);
+                if (!string.IsNullOrEmpty(path))
+                {
+                    var modelObj = assetManager.LoadModel(path); // Isso usa cache O(1) interno
+                    if (modelObj != null) baseRadius = modelObj.BoundingRadius;
+                }
+            }
+            else if (mesh.Type != PrimitiveMeshType.None && (int)mesh.Type <= 6)
+            {
+                baseRadius = _primBoundingRadius[(int)mesh.Type];
+            }
+
+            float maxScale = System.MathF.Max(transform.Scale.X, System.MathF.Max(transform.Scale.Y, transform.Scale.Z));
+            float worldRadius = baseRadius * maxScale;
+
+            var posNum = new System.Numerics.Vector3(transform.Position.X, transform.Position.Y, transform.Position.Z);
+            if (!frustum.IntersectsSphere(posNum, worldRadius))
+            {
+                entitiesCulled++;
+                continue;
+            }
+            entitiesDrawn++;
 
             var scale = Matrix4x4.CreateScale(transform.Scale.X, transform.Scale.Y, transform.Scale.Z);
             
@@ -574,7 +587,6 @@ public class SceneRenderer : IDisposable
                     }
                 }
 
-                var assetManager = ERus.Engine.Assets.AssetManager.Get();
                 string? path = ERus.Engine.Core.Engine.Instance.AssetDatabase.GetPathByGuid(mesh.AssetGuid);
                 if (!string.IsNullOrEmpty(path))
                 {
@@ -591,15 +603,24 @@ public class SceneRenderer : IDisposable
                 _gl.UniformMatrix4(_viewLoc, 1, false, (float*)&view);
                 _gl.UniformMatrix4(_projLoc, 1, false, (float*)&proj);
                 
-                // Precisamos re-bindar o VAO padrão porque o model.Draw() desbindou
-                _gl.BindVertexArray(_vao);
+                // Precisamos garantir que não há VAO pre-bindado
+                _gl.BindVertexArray(0);
             }
-            else if (mesh.Type == PrimitiveMeshType.Cube)
+            else if (mesh.Type != PrimitiveMeshType.None && (int)mesh.Type <= 6)
             {
                 _gl.UniformMatrix4(_modelLoc, 1, false, (float*)&modelMatrix);
-                _gl.DrawArrays(PrimitiveType.Triangles, 0, 36);
+                
+                int typeIdx = (int)mesh.Type;
+                if (_primVao[typeIdx] != 0)
+                {
+                    _gl.BindVertexArray(_primVao[typeIdx]);
+                    _gl.DrawElements(PrimitiveType.Triangles, (uint)_primIndexCount[typeIdx], DrawElementsType.UnsignedInt, (void*)0);
+                }
             }
         }
+
+        // Estatística enviada pro console a cada X frames se quisermos, mas por hora apenas gravamos internamente.
+        // ERus.Engine.Scripting.ConsoleLog.Log($"Render: {entitiesDrawn} desenhados, {entitiesCulled} culled.");
 
         // --- Renderizar Ícones de Câmera ---
         if (drawGrid) // drawGrid == true indica que estamos na SceneView
@@ -633,8 +654,12 @@ public class SceneRenderer : IDisposable
 
     public void Dispose()
     {
-        if (_vao != 0) _gl.DeleteVertexArray(_vao);
-        if (_vbo != 0) _gl.DeleteBuffer(_vbo);
+        for (int i = 1; i <= 6; i++)
+        {
+            if (_primVao[i] != 0) _gl.DeleteVertexArray(_primVao[i]);
+            if (_primVbo[i] != 0) _gl.DeleteBuffer(_primVbo[i]);
+            if (_primEbo[i] != 0) _gl.DeleteBuffer(_primEbo[i]);
+        }
         if (_gridVao != 0) _gl.DeleteVertexArray(_gridVao);
         if (_gridVbo != 0) _gl.DeleteBuffer(_gridVbo);
         if (_gizmoVao != 0) _gl.DeleteVertexArray(_gizmoVao);

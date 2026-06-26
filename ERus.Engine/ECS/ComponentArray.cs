@@ -6,6 +6,12 @@ namespace ERus.Engine.ECS;
 public interface IComponentArray
 {
     void EntityDestroyed(Entity entity);
+    bool HasData(Entity entity);
+    object GetDataBoxed(Entity entity);
+    void InsertDataBoxed(Entity entity, object component);
+    void RemoveDataByEntity(Entity entity);
+    
+    IEnumerable<int> ActiveEntities { get; }
 }
 
 public class ComponentArray<T> : IComponentArray where T : struct, IComponent
@@ -14,6 +20,8 @@ public class ComponentArray<T> : IComponentArray where T : struct, IComponent
     private readonly Dictionary<int, int> _entityToIndex;
     private readonly Dictionary<int, int> _indexToEntity;
     private int _size;
+
+    public IEnumerable<int> ActiveEntities => _entityToIndex.Keys;
 
     public ComponentArray(int maxSize = 5000)
     {
@@ -72,4 +80,22 @@ public class ComponentArray<T> : IComponentArray where T : struct, IComponent
             RemoveData(entity);
         }
     }
+
+    // --- Boxing methods para serialização genérica ---
+
+    public object GetDataBoxed(Entity entity)
+    {
+        return GetData(entity); // boxing automático do struct
+    }
+
+    public void InsertDataBoxed(Entity entity, object component)
+    {
+        InsertData(entity, (T)component); // unboxing
+    }
+
+    public void RemoveDataByEntity(Entity entity)
+    {
+        RemoveData(entity);
+    }
 }
+

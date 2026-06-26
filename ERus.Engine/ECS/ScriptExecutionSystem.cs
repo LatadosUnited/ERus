@@ -237,15 +237,7 @@ public class ScriptExecutionSystem : BaseSystem, IDisposable
             var entityId = kvp.Key;
             var entity = new Entity(entityId);
 
-            bool entityExists = false;
-            foreach (var livingEntity in Registry.GetLivingEntities())
-            {
-                if (livingEntity.Id == entityId && Registry.HasComponent<ScriptComponent>(livingEntity))
-                {
-                    entityExists = true;
-                    break;
-                }
-            }
+            bool entityExists = Registry.IsAlive(entity) && Registry.HasComponent<ScriptComponent>(entity);
 
             if (!entityExists)
             {

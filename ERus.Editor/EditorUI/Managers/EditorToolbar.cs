@@ -54,6 +54,11 @@ public class EditorToolbar
 
             if (ImGui.BeginMenu("Window"))
             {
+                if (ImGui.MenuItem("Input Mapping"))
+                {
+                    _controller.WindowManager.InputMap.IsOpen = true;
+                }
+
                 if (ImGui.BeginMenu("Layouts"))
                 {
                     if (ImGui.MenuItem("Unity Style"))

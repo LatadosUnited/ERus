@@ -14,6 +14,56 @@ public class HierarchyWindow : EditorWindow
     private readonly ERus.Engine.Core.Engine _engine;
 
     private Entity? _lastClickedEntity = null;
+    private int? _renamingEntityId = null;
+    private string _renamingBuffer = "";
+    private string _renamingOriginalName = "";
+    private bool _focusRenameInput = false;
+
+    private void StartRenaming(Entity entity, string currentName)
+    {
+        _renamingEntityId = entity.Id;
+        _renamingBuffer = currentName;
+        _renamingOriginalName = currentName;
+        _focusRenameInput = true;
+    }
+
+    private void ApplyRename(Entity entity, Registry registry)
+    {
+        if (_renamingEntityId != entity.Id) return;
+
+        string newName = _renamingBuffer.Trim();
+        if (string.IsNullOrWhiteSpace(newName))
+        {
+            newName = _renamingOriginalName;
+        }
+
+        if (registry.HasComponent<TagComponent>(entity))
+        {
+            ref var tag = ref registry.GetComponent<TagComponent>(entity);
+            if (tag.Name != newName)
+            {
+                tag.Name = newName;
+                var netModule = _engine.GetModule<NetworkModule>();
+                if (netModule != null && registry.HasComponent<NetworkIdentityComponent>(entity))
+                {
+                    var netId = registry.GetComponent<NetworkIdentityComponent>(entity).NetworkId;
+                    netModule.Replication?.SendRename(netId, newName);
+                }
+            }
+        }
+        else
+        {
+            registry.AddComponent(entity, new TagComponent { Name = newName });
+            var netModule = _engine.GetModule<NetworkModule>();
+            if (netModule != null && registry.HasComponent<NetworkIdentityComponent>(entity))
+            {
+                var netId = registry.GetComponent<NetworkIdentityComponent>(entity).NetworkId;
+                netModule.Replication?.SendRename(netId, newName);
+            }
+        }
+
+        _renamingEntityId = null;
+    }
 
     public HierarchyWindow(EditorUIController controller, ERus.Engine.Core.Engine engine) : base("Hierarchy") 
     {
@@ -40,6 +90,19 @@ public class HierarchyWindow : EditorWindow
                 new System.Numerics.Vector4(0.5f, 0.8f, 1.0f, 1.0f),
                 $"{EditorServices.Selection.SelectedEntities.Count} entidades selecionadas");
             ImGui.Separator();
+        }
+
+        if (ImGui.IsWindowFocused(ImGuiFocusedFlags.RootAndChildWindows) && ImGui.IsKeyPressed(ImGuiKey.F2))
+        {
+            if (EditorServices.Selection.SelectedEntity.HasValue)
+            {
+                var selEntity = EditorServices.Selection.SelectedEntity.Value;
+                string currentName = $"Entity {selEntity.Id}";
+                if (registry.HasComponent<TagComponent>(selEntity))
+                    currentName = registry.GetComponent<TagComponent>(selEntity).Name;
+                
+                StartRenaming(selEntity, currentName);
+            }
         }
 
         // Scroll area para a lista de entidades
@@ -88,16 +151,24 @@ public class HierarchyWindow : EditorWindow
                     {
                         int id = *(int*)payload.Data;
                         var droppedEntity = entities.FirstOrDefault(e => e.Id == id);
+                        string beforeJson = ERus.Engine.ECS.SceneSerializer.SerializeEntityToJson(droppedEntity, registry);
                         ERus.Engine.ECS.RelationshipSystem.SetParent(droppedEntity, null, registry);
+                        string afterJson = ERus.Engine.ECS.SceneSerializer.SerializeEntityToJson(droppedEntity, registry);
+                        _controller.UndoSystem.Record(new ERus.Editor.EditorUI.Commands.EntityEditCommand(droppedEntity, registry, beforeJson, afterJson, "Unparent"));
                     }
 
                     ImGuiPayloadPtr assetPayload = ImGui.AcceptDragDropPayload("ASSET_PATH");
                     if (assetPayload.NativePtr != null)
                     {
                         string sourceFile = ERus.Editor.EditorUI.Managers.DragDropState.DraggedPayload;
-                        if (System.IO.Path.GetExtension(sourceFile).Equals(".prefab", StringComparison.OrdinalIgnoreCase))
+                        string ext = System.IO.Path.GetExtension(sourceFile).ToLowerInvariant();
+                        if (ext == ".prefab")
                         {
                             ERus.Engine.ECS.SceneSerializer.LoadPrefab(sourceFile, ecsModule.ActiveScene, null);
+                        }
+                        else if (ext == ".obj" || ext == ".fbx" || ext == ".gltf" || ext == ".glb")
+                        {
+                            TryInstantiate3DModel(sourceFile, registry, null);
                         }
                     }
                 }
@@ -119,22 +190,41 @@ public class HierarchyWindow : EditorWindow
                         int netId = (netModule.NetworkManager?.IdentityMap.AssignNetworkId(registry, newEntity) ?? -1);
                         netModule.Replication?.SendSpawn(netId, "Empty Entity", 0);
                     }
+                    _controller.UndoSystem.Record(new ERus.Editor.EditorUI.Commands.EntityLifecycleCommand(newEntity, registry, ERus.Editor.EditorUI.Commands.LifecycleAction.Create));
                 }
 
                 if (ImGui.BeginMenu($"{FontAwesome.Cube} 3D Object"))
                 {
-                    if (ImGui.MenuItem("Cube"))
+                    var shapes = new[] { 
+                        PrimitiveMeshType.Cube, PrimitiveMeshType.Sphere, 
+                        PrimitiveMeshType.Capsule, PrimitiveMeshType.Cylinder, 
+                        PrimitiveMeshType.Plane, PrimitiveMeshType.Quad 
+                    };
+
+                    foreach (var shape in shapes)
                     {
-                        var newEntity = registry.CreateEntity();
-                        registry.AddComponent(newEntity, new TransformComponent());
-                        registry.AddComponent(newEntity, new TagComponent { Name = "Cube" });
-                        registry.AddComponent(newEntity, new MeshComponent { Type = PrimitiveMeshType.Cube });
-                        
-                        var netModule = _engine.GetModule<NetworkModule>();
-                        if (netModule != null && netModule.NetworkManager?.IsHost == true)
+                        if (ImGui.MenuItem(shape.ToString()))
                         {
-                            int netId = (netModule.NetworkManager?.IdentityMap.AssignNetworkId(registry, newEntity) ?? -1);
-                            netModule.Replication?.SendSpawn(netId, "Cube", (int)PrimitiveMeshType.Cube);
+                            var newEntity = registry.CreateEntity();
+                            registry.AddComponent(newEntity, new TransformComponent());
+                            registry.AddComponent(newEntity, new TagComponent { Name = shape.ToString() });
+                            registry.AddComponent(newEntity, new MeshComponent { Type = shape });
+
+                            // Add a default collider
+                            if (shape == PrimitiveMeshType.Cube) { registry.AddComponent(newEntity, new BoxColliderComponent { Size = new Silk.NET.Maths.Vector3D<float>(1, 1, 1) }); }
+                            else if (shape == PrimitiveMeshType.Sphere) { registry.AddComponent(newEntity, new SphereColliderComponent { Radius = 0.5f }); }
+                            else if (shape == PrimitiveMeshType.Capsule) { registry.AddComponent(newEntity, new CapsuleColliderComponent { Radius = 0.5f, Height = 1.0f }); }
+                            else if (shape == PrimitiveMeshType.Cylinder) { registry.AddComponent(newEntity, new CylinderColliderComponent { Radius = 0.5f, Height = 1.0f }); }
+                            else if (shape == PrimitiveMeshType.Plane) { registry.AddComponent(newEntity, new BoxColliderComponent { Size = new Silk.NET.Maths.Vector3D<float>(10, 0.1f, 10) }); } 
+                            else if (shape == PrimitiveMeshType.Quad) { registry.AddComponent(newEntity, new BoxColliderComponent { Size = new Silk.NET.Maths.Vector3D<float>(1, 1, 0.1f) }); }
+                            
+                            var netModule = _engine.GetModule<NetworkModule>();
+                            if (netModule != null && netModule.NetworkManager?.IsHost == true)
+                            {
+                                int netId = (netModule.NetworkManager?.IdentityMap.AssignNetworkId(registry, newEntity) ?? -1);
+                                netModule.Replication?.SendSpawn(netId, shape.ToString(), (int)shape);
+                            }
+                            _controller.UndoSystem.Record(new ERus.Editor.EditorUI.Commands.EntityLifecycleCommand(newEntity, registry, ERus.Editor.EditorUI.Commands.LifecycleAction.Create));
                         }
                     }
                     ImGui.EndMenu();
@@ -153,6 +243,7 @@ public class HierarchyWindow : EditorWindow
                         int netId = (netModule.NetworkManager?.IdentityMap.AssignNetworkId(registry, newEntity) ?? -1);
                         netModule.Replication?.SendSpawn(netId, "Camera", -1);
                     }
+                    _controller.UndoSystem.Record(new ERus.Editor.EditorUI.Commands.EntityLifecycleCommand(newEntity, registry, ERus.Editor.EditorUI.Commands.LifecycleAction.Create));
                 }
 
                 ImGui.EndPopup();
@@ -182,16 +273,54 @@ public class HierarchyWindow : EditorWindow
             hasChildren = registry.GetComponent<RelationshipComponent>(entity).FirstChild != null;
         }
 
+        bool isRenaming = _renamingEntityId == entity.Id;
+
         ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags.OpenOnArrow | ImGuiTreeNodeFlags.SpanAvailWidth | ImGuiTreeNodeFlags.FramePadding;
         if (isSelected) flags |= ImGuiTreeNodeFlags.Selected;
         if (!hasChildren) flags |= ImGuiTreeNodeFlags.Leaf;
 
+        if (isRenaming)
+        {
+            flags &= ~ImGuiTreeNodeFlags.SpanAvailWidth; // Permitir SameLine
+            flags |= ImGuiTreeNodeFlags.AllowOverlap;
+        }
+
         // Usa entity.Id + 1 para evitar IntPtr.Zero (que ocorre quando Id == 0)
         // IntPtr.Zero faz o ImGui ignorar o ID e usar hash interno, causando conflitos
-        bool opened = ImGui.TreeNodeEx((IntPtr)(entity.Id + 1), flags, $"{icon} {name}");
+        bool opened;
+        if (isRenaming)
+        {
+            opened = ImGui.TreeNodeEx((IntPtr)(entity.Id + 1), flags, $"{icon} ###Node_{entity.Id}");
+            ImGui.SameLine();
+            
+            if (_focusRenameInput)
+            {
+                ImGui.SetKeyboardFocusHere();
+                _focusRenameInput = false;
+            }
+            
+            ImGui.PushItemWidth(-1);
+            if (ImGui.InputText($"##Rename_{entity.Id}", ref _renamingBuffer, 256, ImGuiInputTextFlags.EnterReturnsTrue | ImGuiInputTextFlags.AutoSelectAll))
+            {
+                ApplyRename(entity, registry);
+            }
+            ImGui.PopItemWidth();
+
+            if (ImGui.IsItemDeactivated())
+            {
+                if (ImGui.IsKeyPressed(ImGuiKey.Escape))
+                    _renamingEntityId = null; // Cancela
+                else
+                    ApplyRename(entity, registry); // Aplica on blur
+            }
+        }
+        else
+        {
+            opened = ImGui.TreeNodeEx((IntPtr)(entity.Id + 1), flags, $"{icon} {name}");
+        }
 
         // Seleção ao clicar
-        if (ImGui.IsItemClicked() && !ImGui.IsItemToggledOpen())
+        if (!isRenaming && ImGui.IsItemClicked() && !ImGui.IsItemToggledOpen())
         {
             if (io.KeyCtrl)
                 EditorServices.Selection.ToggleSelection(entity);
@@ -201,6 +330,12 @@ public class HierarchyWindow : EditorWindow
                 EditorServices.Selection.SelectedEntity = entity;
 
             _lastClickedEntity = entity;
+        }
+
+        // Duplo clique para renomear
+        if (!isRenaming && ImGui.IsItemHovered() && ImGui.IsMouseDoubleClicked(ImGuiMouseButton.Left))
+        {
+            StartRenaming(entity, name);
         }
 
         // Context menu por entidade (botão direito)
@@ -218,6 +353,7 @@ public class HierarchyWindow : EditorWindow
                     var netId = registry.GetComponent<NetworkIdentityComponent>(entity).NetworkId;
                     netModule.Replication?.SendDestroy(netId);
                 }
+                _controller.UndoSystem.Record(new ERus.Editor.EditorUI.Commands.EntityLifecycleCommand(entity, registry, ERus.Editor.EditorUI.Commands.LifecycleAction.Destroy));
                 registry.DestroyEntity(entity);
                 EditorServices.Selection.SelectedEntities.Remove(entity);
             }
@@ -245,7 +381,10 @@ public class HierarchyWindow : EditorWindow
                     var droppedEntity = registry.GetLivingEntities().FirstOrDefault(e => e.Id == droppedId);
                     if (droppedEntity.Id != entity.Id)
                     {
+                        string beforeJson = ERus.Engine.ECS.SceneSerializer.SerializeEntityToJson(droppedEntity, registry);
                         ERus.Engine.ECS.RelationshipSystem.SetParent(droppedEntity, entity, registry);
+                        string afterJson = ERus.Engine.ECS.SceneSerializer.SerializeEntityToJson(droppedEntity, registry);
+                        _controller.UndoSystem.Record(new ERus.Editor.EditorUI.Commands.EntityEditCommand(droppedEntity, registry, beforeJson, afterJson, "Parent"));
                     }
                 }
 
@@ -253,10 +392,15 @@ public class HierarchyWindow : EditorWindow
                 if (assetPayload.NativePtr != null)
                 {
                     string sourceFile = ERus.Editor.EditorUI.Managers.DragDropState.DraggedPayload;
-                    if (System.IO.Path.GetExtension(sourceFile).Equals(".prefab", StringComparison.OrdinalIgnoreCase))
+                    string ext = System.IO.Path.GetExtension(sourceFile).ToLowerInvariant();
+                    if (ext == ".prefab")
                     {
                         var ecsModule = _engine.GetModule<ECSModule>();
                         ERus.Engine.ECS.SceneSerializer.LoadPrefab(sourceFile, ecsModule.ActiveScene, entity);
+                    }
+                    else if (ext == ".obj" || ext == ".fbx" || ext == ".gltf" || ext == ".glb")
+                    {
+                        TryInstantiate3DModel(sourceFile, registry, entity);
                     }
                 }
                 ImGui.EndDragDropTarget();
@@ -279,6 +423,37 @@ public class HierarchyWindow : EditorWindow
                 }
             }
             ImGui.TreePop();
+        }
+    }
+
+    private void TryInstantiate3DModel(string sourceFile, Registry registry, Entity? parent)
+    {
+        var guid = _engine.AssetDatabase.GetGuidByPath(sourceFile);
+        if (guid == null)
+        {
+            _engine.AssetDatabase.ProcessFile(sourceFile);
+            guid = _engine.AssetDatabase.GetGuidByPath(sourceFile);
+        }
+
+        if (guid != null)
+        {
+            var newEntity = registry.CreateEntity();
+            registry.AddComponent(newEntity, new TransformComponent());
+            registry.AddComponent(newEntity, new TagComponent { Name = System.IO.Path.GetFileNameWithoutExtension(sourceFile) });
+            registry.AddComponent(newEntity, new MeshComponent { Type = PrimitiveMeshType.None, AssetGuid = guid.Value });
+            
+            if (parent != null)
+            {
+                ERus.Engine.ECS.RelationshipSystem.SetParent(newEntity, parent.Value, registry);
+            }
+            
+            var netModule = _engine.GetModule<NetworkModule>();
+            if (netModule != null && netModule.NetworkManager?.IsHost == true)
+            {
+                int netId = (netModule.NetworkManager?.IdentityMap.AssignNetworkId(registry, newEntity) ?? -1);
+                netModule.Replication?.SendSpawn(netId, System.IO.Path.GetFileNameWithoutExtension(sourceFile), 0);
+            }
+            _controller.UndoSystem.Record(new ERus.Editor.EditorUI.Commands.EntityLifecycleCommand(newEntity, registry, ERus.Editor.EditorUI.Commands.LifecycleAction.Create));
         }
     }
 }

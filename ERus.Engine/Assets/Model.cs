@@ -7,6 +7,7 @@ public class Model : IDisposable
 {
     public string Path { get; private set; }
     public List<Mesh> Meshes { get; private set; }
+    public float BoundingRadius { get; private set; }
     
     public Dictionary<string, BoneInfo> BoneInfoMap { get; private set; }
     public int BoneCounter { get; set; } = 0;
@@ -25,6 +26,8 @@ public class Model : IDisposable
     public void AddMesh(Mesh mesh)
     {
         Meshes.Add(mesh);
+        if (mesh.BoundingRadius > BoundingRadius)
+            BoundingRadius = mesh.BoundingRadius;
     }
 
     public void Draw(uint shaderProgram)

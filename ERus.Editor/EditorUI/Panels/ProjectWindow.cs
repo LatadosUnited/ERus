@@ -1,6 +1,8 @@
 using ImGuiNET;
 using System.IO;
 using System;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace ERus.Editor.EditorUI.Panels;
 
@@ -37,6 +39,61 @@ public class ProjectWindow : EditorWindow
                 _currentPath = Directory.GetParent(_currentPath)?.FullName ?? _basePath;
                 if (!_currentPath.StartsWith(_basePath)) _currentPath = _basePath;
             }
+
+            if (ImGui.BeginDragDropTarget())
+            {
+                var payload = ImGui.AcceptDragDropPayload("ASSET_PATH");
+                unsafe
+                {
+                    if (payload.NativePtr != null)
+                    {
+                        string sourceFile = ERus.Editor.EditorUI.Managers.DragDropState.DraggedPayload;
+                        if (File.Exists(sourceFile))
+                        {
+                            var parentDirInfo = Directory.GetParent(_currentPath);
+                            if (parentDirInfo != null)
+                            {
+                                string parentDir = parentDirInfo.FullName;
+                                if (parentDir.StartsWith(_basePath))
+                                {
+                                    string fileName = Path.GetFileName(sourceFile);
+                                    string destFile = Path.Combine(parentDir, fileName);
+                                    
+                                    if (sourceFile != destFile)
+                                    {
+                                        if (File.Exists(destFile) || Directory.Exists(destFile))
+                                        {
+                                            ERus.Engine.Scripting.ConsoleLog.Error($"[Project] Erro ao mover: Já existe um item com o nome {fileName} no diretório de destino.");
+                                        }
+                                        else
+                                        {
+                                            try
+                                            {
+                                                File.Move(sourceFile, destFile);
+                                                ERus.Engine.Scripting.ConsoleLog.Log($"[Project] Arquivo movido: {fileName} -> {Path.GetFileName(parentDir)}");
+                                                
+                                                string sourceMeta = sourceFile + ".meta";
+                                                if (File.Exists(sourceMeta))
+                                                {
+                                                    File.Move(sourceMeta, destFile + ".meta");
+                                                }
+                                                
+                                                _engine.AssetDatabase.Scan();
+                                            }
+                                            catch (Exception ex)
+                                            {
+                                                ERus.Engine.Scripting.ConsoleLog.Error($"[Project] Erro ao mover arquivo: {ex.Message}");
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                ImGui.EndDragDropTarget();
+            }
+
             ImGui.Separator();
         }
 
@@ -126,6 +183,32 @@ public class ProjectWindow : EditorWindow
                         var scene = _engine.GetModule<ERus.Engine.Modules.ECSModule>().ActiveScene;
                         ERus.Engine.ECS.SceneSerializer.LoadScene(file, scene);
                         ERus.Engine.Scripting.ConsoleLog.Log($"[Project] Carregando cena: {fileName}");
+                    }
+                    else
+                    {
+                        try
+                        {
+                            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                            {
+                                Process.Start(new ProcessStartInfo
+                                {
+                                    FileName = file,
+                                    UseShellExecute = true
+                                });
+                            }
+                            else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+                            {
+                                Process.Start("xdg-open", $"\"{file}\"");
+                            }
+                            else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                            {
+                                Process.Start("open", $"\"{file}\"");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            ERus.Engine.Scripting.ConsoleLog.Error($"[Project] Erro ao abrir arquivo externamente: {ex.Message}");
+                        }
                     }
                 }
             }
@@ -371,6 +454,88 @@ public class {className} : EntityScript
             ERus.Engine.Scripting.ConsoleLog.Error($"[Project] Erro ao criar item: {ex.Message}");
         }
     }
+
+    public void ImportFiles(string[] files)
+    {
+        string targetDirectory = _currentPath;
+
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            try
+            {
+                var importedFiles = new System.Collections.Generic.List<string>();
+
+                foreach (var file in files)
+                {
+                    if (File.Exists(file))
+                    {
+                        string fileName = Path.GetFileName(file);
+                        string destFile = Path.Combine(targetDirectory, fileName);
+                        
+                        if (file != destFile)
+                        {
+                            File.Copy(file, destFile, true);
+                            importedFiles.Add(destFile);
+                            ERus.Engine.Scripting.ConsoleLog.Log($"[Project] Arquivo importado: {fileName} -> {targetDirectory}");
+                        }
+                    }
+                    else if (Directory.Exists(file))
+                    {
+                        CopyFilesRecursively(file, targetDirectory, importedFiles);
+                    }
+                }
+
+                if (importedFiles.Count > 0)
+                {
+                    _engine.AssetDatabase.Scan();
+                    var networkModule = _engine.GetModule<ERus.Engine.Modules.NetworkModule>();
+                    if (networkModule?.NetworkManager?.AssetSync != null)
+                    {
+                        foreach (var imported in importedFiles)
+                        {
+                            _ = networkModule.NetworkManager.AssetSync.AnnounceAssetAsync(imported);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                ERus.Engine.Scripting.ConsoleLog.Error($"[Project] Erro ao importar arquivos: {ex.Message}");
+            }
+        });
+    }
+
+    private void CopyFilesRecursively(string sourcePath, string targetPath, System.Collections.Generic.List<string> importedFiles)
+    {
+        var dirInfo = new DirectoryInfo(sourcePath);
+        if (!dirInfo.Exists) return;
+
+        string[] ignoredDirs = { ".git", ".vs", "bin", "obj", "node_modules" };
+        if (Array.Exists(ignoredDirs, d => d.Equals(dirInfo.Name, StringComparison.OrdinalIgnoreCase)) || dirInfo.Name.StartsWith("."))
+        {
+            return;
+        }
+
+        string newTargetDir = Path.Combine(targetPath, dirInfo.Name);
+        if (!Directory.Exists(newTargetDir))
+        {
+            Directory.CreateDirectory(newTargetDir);
+            ERus.Engine.Scripting.ConsoleLog.Log($"[Project] Pasta criada na importação: {newTargetDir}");
+        }
+
+        foreach (var fileInfo in dirInfo.GetFiles())
+        {
+            if (fileInfo.Name.StartsWith(".") || fileInfo.Name.EndsWith(".meta")) continue;
+
+            string destFile = Path.Combine(newTargetDir, fileInfo.Name);
+            fileInfo.CopyTo(destFile, true);
+            importedFiles.Add(destFile);
+            ERus.Engine.Scripting.ConsoleLog.Log($"[Project] Arquivo importado: {fileInfo.Name} -> {newTargetDir}");
+        }
+
+        foreach (var subdirInfo in dirInfo.GetDirectories())
+        {
+            CopyFilesRecursively(subdirInfo.FullName, newTargetDir, importedFiles);
+        }
+    }
 }
-
-

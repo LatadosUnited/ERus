@@ -18,6 +18,7 @@ public struct AnimatorComponent : IComponent
 
     // Array com as matrizes finais calculadas pelo AnimatorSystem, limitadas a 100 para o Shader
     // Referência em classe para evitar cópia excessiva (structs devem ser leves)
+    [NonSerializedComponent]
     public Matrix4x4[] FinalBoneMatrices { get; set; }
 
     public AnimatorComponent()

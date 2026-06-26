@@ -42,6 +42,7 @@ public class EditorInputHandler
                     netModule.Replication?.SendDestroy(netId);
                 }
 
+                _undoSystem.Record(new ERus.Editor.EditorUI.Commands.EntityLifecycleCommand(entity, ecs.ActiveScene.Registry, ERus.Editor.EditorUI.Commands.LifecycleAction.Destroy));
                 ecs.ActiveScene.Registry.DestroyEntity(entity);
             }
 

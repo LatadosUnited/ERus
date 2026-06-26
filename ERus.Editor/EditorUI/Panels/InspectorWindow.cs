@@ -15,6 +15,26 @@ public class InspectorWindow : EditorWindow
     private readonly ERus.Engine.Core.Engine _engine;
     private System.Collections.Concurrent.ConcurrentQueue<Action> _mainThreadActions = new();
 
+    private string? _currentEditBeforeJson = null;
+    private bool _isEditing = false;
+
+    private void TrackUndo(string propertyName, Registry registry, Entity entity)
+    {
+        if (ImGui.IsItemActivated() && !_isEditing)
+        {
+            _currentEditBeforeJson = ERus.Engine.ECS.SceneSerializer.SerializeEntityToJson(entity, registry);
+            _isEditing = true;
+        }
+        
+        if (ImGui.IsItemDeactivatedAfterEdit() && _isEditing && _currentEditBeforeJson != null)
+        {
+            string afterJson = ERus.Engine.ECS.SceneSerializer.SerializeEntityToJson(entity, registry);
+            _controller.UndoSystem.Record(new ERus.Editor.EditorUI.Commands.EntityEditCommand(entity, registry, _currentEditBeforeJson, afterJson, propertyName));
+            _isEditing = false;
+            _currentEditBeforeJson = null;
+        }
+    }
+
     public InspectorWindow(EditorUIController controller, ERus.Engine.Core.Engine engine) : base("Inspector") 
     {
         _controller = controller;
@@ -77,6 +97,7 @@ public class InspectorWindow : EditorWindow
                     netModule.Replication?.SendRename(netId, name);
                 }
             }
+            TrackUndo("Tag Name", registry, entity);
             ImGui.PopItemWidth();
             ImGui.PopFont();
             ImGui.Separator();
@@ -102,14 +123,17 @@ public class InspectorWindow : EditorWindow
 
                     DrawPropertyLabel("Position");
                     if (ImGui.DragFloat3("##Pos", ref pos, 0.1f)) { edited = true; }
+                    TrackUndo("Position", registry, entity);
                     ImGui.PopItemWidth();
 
                     DrawPropertyLabel("Rotation");
                     if (ImGui.DragFloat3("##Rot", ref rot, 1.0f)) { edited = true; }
+                    TrackUndo("Rotation", registry, entity);
                     ImGui.PopItemWidth();
 
                     DrawPropertyLabel("Scale");
                     if (ImGui.DragFloat3("##Sca", ref scale, 0.1f)) { edited = true; }
+                    TrackUndo("Scale", registry, entity);
                     ImGui.PopItemWidth();
 
                     ImGui.EndTable();
@@ -213,6 +237,296 @@ public class InspectorWindow : EditorWindow
 
                     ImGui.EndTable();
                 }
+            }
+        }
+
+        // RIGIDBODY COMPONENT
+        if (registry.HasComponent<RigidBodyComponent>(entity))
+        {
+            if (ImGui.CollapsingHeader("Rigidbody", ImGuiTreeNodeFlags.DefaultOpen))
+            {
+                if (ImGui.BeginTable("RigidbodyTable", 2, ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.SizingStretchProp))
+                {
+                    ImGui.TableSetupColumn("Property", ImGuiTableColumnFlags.WidthFixed, 100.0f);
+                    ImGui.TableSetupColumn("Value", ImGuiTableColumnFlags.WidthStretch);
+
+                    ref var rb = ref registry.GetComponent<RigidBodyComponent>(entity);
+                    
+                    bool isKinematic = rb.IsKinematic;
+                    DrawPropertyLabel("Is Kinematic");
+                    if (ImGui.Checkbox("##IsKinematic", ref isKinematic)) rb.IsKinematic = isKinematic;
+                    ImGui.PopItemWidth();
+
+                    bool useGravity = rb.UseGravity;
+                    DrawPropertyLabel("Use Gravity");
+                    if (ImGui.Checkbox("##UseGravity", ref useGravity)) rb.UseGravity = useGravity;
+                    ImGui.PopItemWidth();
+
+                    float mass = rb.Mass;
+                    DrawPropertyLabel("Mass");
+                    if (ImGui.DragFloat("##Mass", ref mass, 0.1f, 0.01f, 10000f)) rb.Mass = mass;
+                    ImGui.PopItemWidth();
+
+                    float linearDrag = rb.LinearDrag;
+                    DrawPropertyLabel("Linear Drag");
+                    if (ImGui.DragFloat("##LinearDrag", ref linearDrag, 0.1f, 0.0f, 100f)) rb.LinearDrag = linearDrag;
+                    ImGui.PopItemWidth();
+
+                    float angularDrag = rb.AngularDrag;
+                    DrawPropertyLabel("Angular Drag");
+                    if (ImGui.DragFloat("##AngularDrag", ref angularDrag, 0.1f, 0.0f, 100f)) rb.AngularDrag = angularDrag;
+                    ImGui.PopItemWidth();
+
+                    int constraints = (int)rb.Constraints;
+                    string[] cNames = Enum.GetNames(typeof(RigidbodyConstraints));
+                    int[] cValues = (int[])Enum.GetValues(typeof(RigidbodyConstraints));
+                    DrawPropertyLabel("Constraints");
+                    if (ImGui.BeginCombo("##Constraints", rb.Constraints.ToString()))
+                    {
+                        for (int i = 0; i < cNames.Length; i++)
+                        {
+                            if (cValues[i] == 0) continue; // Skip "None"
+                            if (cValues[i] == (int)RigidbodyConstraints.FreezePosition ||
+                                cValues[i] == (int)RigidbodyConstraints.FreezeRotation ||
+                                cValues[i] == (int)RigidbodyConstraints.FreezeAll) continue; // Skip composite names
+                            
+                            bool isSelected = (constraints & cValues[i]) == cValues[i];
+                            if (ImGui.Checkbox(cNames[i], ref isSelected))
+                            {
+                                if (isSelected) constraints |= cValues[i];
+                                else constraints &= ~cValues[i];
+                                rb.Constraints = (RigidbodyConstraints)constraints;
+                            }
+                        }
+                        ImGui.EndCombo();
+                    }
+                    ImGui.PopItemWidth();
+
+                    ImGui.EndTable();
+                }
+                
+                ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.7f, 0.3f, 0.2f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.8f, 0.4f, 0.3f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(0.9f, 0.5f, 0.4f, 1.0f));
+                if (ImGui.Button("Remove Rigidbody", new Vector2(-1, 22)))
+                {
+                    registry.RemoveComponent<RigidBodyComponent>(entity);
+                }
+                ImGui.PopStyleColor(3);
+            }
+        }
+
+        // BOX COLLIDER COMPONENT
+        if (registry.HasComponent<BoxColliderComponent>(entity))
+        {
+            if (ImGui.CollapsingHeader("Box Collider", ImGuiTreeNodeFlags.DefaultOpen))
+            {
+                if (ImGui.BeginTable("BoxColliderTable", 2, ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.SizingStretchProp))
+                {
+                    ImGui.TableSetupColumn("Property", ImGuiTableColumnFlags.WidthFixed, 100.0f);
+                    ImGui.TableSetupColumn("Value", ImGuiTableColumnFlags.WidthStretch);
+                    ref var coll = ref registry.GetComponent<BoxColliderComponent>(entity);
+                    
+                    System.Numerics.Vector3 size = new System.Numerics.Vector3(coll.Size.X, coll.Size.Y, coll.Size.Z);
+                    DrawPropertyLabel("Size");
+                    if (ImGui.DragFloat3("##BoxSize", ref size, 0.1f)) coll.Size = new Silk.NET.Maths.Vector3D<float>(size.X, size.Y, size.Z);
+                    ImGui.PopItemWidth();
+                    
+                    System.Numerics.Vector3 center = new System.Numerics.Vector3(coll.Center.X, coll.Center.Y, coll.Center.Z);
+                    DrawPropertyLabel("Center");
+                    if (ImGui.DragFloat3("##BoxCenter", ref center, 0.1f)) coll.Center = new Silk.NET.Maths.Vector3D<float>(center.X, center.Y, center.Z);
+                    ImGui.PopItemWidth();
+
+                    bool isTrigger = coll.IsTrigger;
+                    DrawPropertyLabel("Is Trigger");
+                    if (ImGui.Checkbox("##BoxIsTrigger", ref isTrigger)) coll.IsTrigger = isTrigger;
+                    ImGui.PopItemWidth();
+                    ImGui.EndTable();
+                }
+                ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.7f, 0.3f, 0.2f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.8f, 0.4f, 0.3f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(0.9f, 0.5f, 0.4f, 1.0f));
+                if (ImGui.Button("Remove Box Collider", new Vector2(-1, 22))) registry.RemoveComponent<BoxColliderComponent>(entity);
+                ImGui.PopStyleColor(3);
+            }
+        }
+
+        // SPHERE COLLIDER COMPONENT
+        if (registry.HasComponent<SphereColliderComponent>(entity))
+        {
+            if (ImGui.CollapsingHeader("Sphere Collider", ImGuiTreeNodeFlags.DefaultOpen))
+            {
+                if (ImGui.BeginTable("SphereColliderTable", 2, ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.SizingStretchProp))
+                {
+                    ImGui.TableSetupColumn("Property", ImGuiTableColumnFlags.WidthFixed, 100.0f);
+                    ImGui.TableSetupColumn("Value", ImGuiTableColumnFlags.WidthStretch);
+                    ref var coll = ref registry.GetComponent<SphereColliderComponent>(entity);
+                    
+                    float radius = coll.Radius;
+                    DrawPropertyLabel("Radius");
+                    if (ImGui.DragFloat("##SphereRadius", ref radius, 0.1f)) coll.Radius = radius;
+                    ImGui.PopItemWidth();
+                    
+                    System.Numerics.Vector3 center = new System.Numerics.Vector3(coll.Center.X, coll.Center.Y, coll.Center.Z);
+                    DrawPropertyLabel("Center");
+                    if (ImGui.DragFloat3("##SphereCenter", ref center, 0.1f)) coll.Center = new Silk.NET.Maths.Vector3D<float>(center.X, center.Y, center.Z);
+                    ImGui.PopItemWidth();
+
+                    bool isTrigger = coll.IsTrigger;
+                    DrawPropertyLabel("Is Trigger");
+                    if (ImGui.Checkbox("##SphereIsTrigger", ref isTrigger)) coll.IsTrigger = isTrigger;
+                    ImGui.PopItemWidth();
+                    ImGui.EndTable();
+                }
+                ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.7f, 0.3f, 0.2f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.8f, 0.4f, 0.3f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(0.9f, 0.5f, 0.4f, 1.0f));
+                if (ImGui.Button("Remove Sphere Collider", new Vector2(-1, 22))) registry.RemoveComponent<SphereColliderComponent>(entity);
+                ImGui.PopStyleColor(3);
+            }
+        }
+
+        // CAPSULE COLLIDER COMPONENT
+        if (registry.HasComponent<CapsuleColliderComponent>(entity))
+        {
+            if (ImGui.CollapsingHeader("Capsule Collider", ImGuiTreeNodeFlags.DefaultOpen))
+            {
+                if (ImGui.BeginTable("CapsuleColliderTable", 2, ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.SizingStretchProp))
+                {
+                    ImGui.TableSetupColumn("Property", ImGuiTableColumnFlags.WidthFixed, 100.0f);
+                    ImGui.TableSetupColumn("Value", ImGuiTableColumnFlags.WidthStretch);
+                    ref var coll = ref registry.GetComponent<CapsuleColliderComponent>(entity);
+                    
+                    float radius = coll.Radius;
+                    DrawPropertyLabel("Radius");
+                    if (ImGui.DragFloat("##CapsuleRadius", ref radius, 0.1f)) coll.Radius = radius;
+                    ImGui.PopItemWidth();
+
+                    float height = coll.Height;
+                    DrawPropertyLabel("Height");
+                    if (ImGui.DragFloat("##CapsuleHeight", ref height, 0.1f)) coll.Height = height;
+                    ImGui.PopItemWidth();
+                    
+                    System.Numerics.Vector3 center = new System.Numerics.Vector3(coll.Center.X, coll.Center.Y, coll.Center.Z);
+                    DrawPropertyLabel("Center");
+                    if (ImGui.DragFloat3("##CapsuleCenter", ref center, 0.1f)) coll.Center = new Silk.NET.Maths.Vector3D<float>(center.X, center.Y, center.Z);
+                    ImGui.PopItemWidth();
+
+                    bool isTrigger = coll.IsTrigger;
+                    DrawPropertyLabel("Is Trigger");
+                    if (ImGui.Checkbox("##CapsuleIsTrigger", ref isTrigger)) coll.IsTrigger = isTrigger;
+                    ImGui.PopItemWidth();
+                    ImGui.EndTable();
+                }
+                ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.7f, 0.3f, 0.2f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.8f, 0.4f, 0.3f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(0.9f, 0.5f, 0.4f, 1.0f));
+                if (ImGui.Button("Remove Capsule Collider", new Vector2(-1, 22))) registry.RemoveComponent<CapsuleColliderComponent>(entity);
+                ImGui.PopStyleColor(3);
+            }
+        }
+
+        // CYLINDER COLLIDER COMPONENT
+        if (registry.HasComponent<CylinderColliderComponent>(entity))
+        {
+            if (ImGui.CollapsingHeader("Cylinder Collider", ImGuiTreeNodeFlags.DefaultOpen))
+            {
+                if (ImGui.BeginTable("CylinderColliderTable", 2, ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.SizingStretchProp))
+                {
+                    ImGui.TableSetupColumn("Property", ImGuiTableColumnFlags.WidthFixed, 100.0f);
+                    ImGui.TableSetupColumn("Value", ImGuiTableColumnFlags.WidthStretch);
+                    ref var coll = ref registry.GetComponent<CylinderColliderComponent>(entity);
+                    
+                    float radius = coll.Radius;
+                    DrawPropertyLabel("Radius");
+                    if (ImGui.DragFloat("##CylinderRadius", ref radius, 0.1f)) coll.Radius = radius;
+                    ImGui.PopItemWidth();
+
+                    float height = coll.Height;
+                    DrawPropertyLabel("Height");
+                    if (ImGui.DragFloat("##CylinderHeight", ref height, 0.1f)) coll.Height = height;
+                    ImGui.PopItemWidth();
+                    
+                    System.Numerics.Vector3 center = new System.Numerics.Vector3(coll.Center.X, coll.Center.Y, coll.Center.Z);
+                    DrawPropertyLabel("Center");
+                    if (ImGui.DragFloat3("##CylinderCenter", ref center, 0.1f)) coll.Center = new Silk.NET.Maths.Vector3D<float>(center.X, center.Y, center.Z);
+                    ImGui.PopItemWidth();
+
+                    bool isTrigger = coll.IsTrigger;
+                    DrawPropertyLabel("Is Trigger");
+                    if (ImGui.Checkbox("##CylinderIsTrigger", ref isTrigger)) coll.IsTrigger = isTrigger;
+                    ImGui.PopItemWidth();
+                    ImGui.EndTable();
+                }
+                ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.7f, 0.3f, 0.2f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.8f, 0.4f, 0.3f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(0.9f, 0.5f, 0.4f, 1.0f));
+                if (ImGui.Button("Remove Cylinder Collider", new Vector2(-1, 22))) registry.RemoveComponent<CylinderColliderComponent>(entity);
+                ImGui.PopStyleColor(3);
+            }
+        }
+
+        // MESH COLLIDER COMPONENT
+        if (registry.HasComponent<MeshColliderComponent>(entity))
+        {
+            if (ImGui.CollapsingHeader("Mesh Collider", ImGuiTreeNodeFlags.DefaultOpen))
+            {
+                if (ImGui.BeginTable("MeshColliderTable", 2, ImGuiTableFlags.BordersInnerV | ImGuiTableFlags.SizingStretchProp))
+                {
+                    ImGui.TableSetupColumn("Property", ImGuiTableColumnFlags.WidthFixed, 100.0f);
+                    ImGui.TableSetupColumn("Value", ImGuiTableColumnFlags.WidthStretch);
+                    ref var coll = ref registry.GetComponent<MeshColliderComponent>(entity);
+
+                    bool isConvex = coll.IsConvex;
+                    DrawPropertyLabel("Is Convex");
+                    if (ImGui.Checkbox("##MeshIsConvex", ref isConvex)) coll.IsConvex = isConvex;
+                    ImGui.PopItemWidth();
+
+                    System.Numerics.Vector3 center = new System.Numerics.Vector3(coll.Center.X, coll.Center.Y, coll.Center.Z);
+                    DrawPropertyLabel("Center");
+                    if (ImGui.DragFloat3("##MeshCenter", ref center, 0.1f)) coll.Center = new Silk.NET.Maths.Vector3D<float>(center.X, center.Y, center.Z);
+                    ImGui.PopItemWidth();
+
+                    bool isTrigger = coll.IsTrigger;
+                    DrawPropertyLabel("Is Trigger");
+                    if (ImGui.Checkbox("##MeshIsTrigger", ref isTrigger)) coll.IsTrigger = isTrigger;
+                    ImGui.PopItemWidth();
+                    
+                    DrawPropertyLabel("Asset Path (.obj/.gltf)");
+                    string path = "";
+                    if (coll.AssetGuid != Guid.Empty) path = _engine.AssetDatabase.GetPathByGuid(coll.AssetGuid) ?? "(Desconhecido / Falta)";
+                    else path = "(Nenhum)";
+                    
+                    ImGui.BeginDisabled();
+                    ImGui.InputText("##MeshCollPath", ref path, 512);
+                    ImGui.EndDisabled();
+                    if (ImGui.BeginDragDropTarget())
+                    {
+                        var payload = ImGui.AcceptDragDropPayload("ASSET_PATH");
+                        unsafe {
+                            if (payload.NativePtr != null)
+                            {
+                                string dropped = ERus.Editor.EditorUI.Managers.DragDropState.DraggedPayload;
+                                if (dropped.EndsWith(".obj", StringComparison.OrdinalIgnoreCase) ||
+                                    dropped.EndsWith(".fbx", StringComparison.OrdinalIgnoreCase) ||
+                                    dropped.EndsWith(".gltf", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    var guid = _engine.AssetDatabase.GetGuidByPath(dropped);
+                                    if (guid.HasValue) coll.AssetGuid = guid.Value;
+                                }
+                            }
+                        }
+                        ImGui.EndDragDropTarget();
+                    }
+                    ImGui.PopItemWidth();
+
+                    ImGui.EndTable();
+                }
+                ImGui.PushStyleColor(ImGuiCol.Button, new Vector4(0.7f, 0.3f, 0.2f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonHovered, new Vector4(0.8f, 0.4f, 0.3f, 1.0f));
+                ImGui.PushStyleColor(ImGuiCol.ButtonActive, new Vector4(0.9f, 0.5f, 0.4f, 1.0f));
+                if (ImGui.Button("Remove Mesh Collider", new Vector2(-1, 22))) registry.RemoveComponent<MeshColliderComponent>(entity);
+                ImGui.PopStyleColor(3);
             }
         }
 
@@ -379,6 +693,42 @@ public class InspectorWindow : EditorWindow
                     registry.AddComponent(entity, new CameraComponent());
                     ImGui.CloseCurrentPopup();
                 }
+            }
+
+            if (ImGui.BeginMenu("Physics"))
+            {
+                if (!registry.HasComponent<RigidBodyComponent>(entity) && ImGui.MenuItem("Rigidbody"))
+                {
+                    registry.AddComponent(entity, new RigidBodyComponent());
+                    ImGui.CloseCurrentPopup();
+                }
+                ImGui.Separator();
+                if (!registry.HasComponent<BoxColliderComponent>(entity) && ImGui.MenuItem("Box Collider"))
+                {
+                    registry.AddComponent(entity, new BoxColliderComponent());
+                    ImGui.CloseCurrentPopup();
+                }
+                if (!registry.HasComponent<SphereColliderComponent>(entity) && ImGui.MenuItem("Sphere Collider"))
+                {
+                    registry.AddComponent(entity, new SphereColliderComponent());
+                    ImGui.CloseCurrentPopup();
+                }
+                if (!registry.HasComponent<CapsuleColliderComponent>(entity) && ImGui.MenuItem("Capsule Collider"))
+                {
+                    registry.AddComponent(entity, new CapsuleColliderComponent());
+                    ImGui.CloseCurrentPopup();
+                }
+                if (!registry.HasComponent<CylinderColliderComponent>(entity) && ImGui.MenuItem("Cylinder Collider"))
+                {
+                    registry.AddComponent(entity, new CylinderColliderComponent());
+                    ImGui.CloseCurrentPopup();
+                }
+                if (!registry.HasComponent<MeshColliderComponent>(entity) && ImGui.MenuItem("Mesh Collider"))
+                {
+                    registry.AddComponent(entity, new MeshColliderComponent());
+                    ImGui.CloseCurrentPopup();
+                }
+                ImGui.EndMenu();
             }
 
             var scriptModule = _engine.GetModule<ScriptModule>();

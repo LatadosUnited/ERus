@@ -17,6 +17,9 @@ public class AssetManager
     
     private Dictionary<string, Model> _models = new();
     private Dictionary<string, Texture> _textures = new();
+    
+    private Dictionary<string, int> _modelRefCounts = new();
+    private Dictionary<string, int> _textureRefCounts = new();
 
     public static void Initialize(GL gl)
     {
@@ -46,7 +49,10 @@ public class AssetManager
         string fullPath = Path.GetFullPath(path);
 
         if (_models.ContainsKey(fullPath))
+        {
+            _modelRefCounts[fullPath]++;
             return _models[fullPath];
+        }
 
         if (!System.IO.File.Exists(fullPath))
         {
@@ -73,7 +79,65 @@ public class AssetManager
         }
 
         _models[fullPath] = model;
+        _modelRefCounts[fullPath] = 1;
         return model;
+    }
+
+    public void UnloadModel(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return;
+        string fullPath = Path.GetFullPath(path);
+
+        if (_modelRefCounts.ContainsKey(fullPath))
+        {
+            _modelRefCounts[fullPath]--;
+            if (_modelRefCounts[fullPath] <= 0)
+            {
+                if (_models.TryGetValue(fullPath, out var model))
+                {
+                    // Descarregar texturas referenciadas pelos meshes
+                    foreach (var mesh in model.Meshes)
+                    {
+                        foreach (var texture in mesh.Textures)
+                        {
+                            if (_textureRefCounts.ContainsKey(texture.Path))
+                            {
+                                _textureRefCounts[texture.Path]--;
+                                if (_textureRefCounts[texture.Path] <= 0)
+                                {
+                                    texture.Dispose();
+                                    _textures.Remove(texture.Path);
+                                    _textureRefCounts.Remove(texture.Path);
+                                }
+                            }
+                        }
+                    }
+                    model.Dispose();
+                    _models.Remove(fullPath);
+                }
+                _modelRefCounts.Remove(fullPath);
+                Scripting.ConsoleLog.Log($"[AssetManager] Modelo e dependências descarregados da VRAM: {fullPath}");
+            }
+        }
+    }
+
+    public void ClearAll()
+    {
+        foreach (var model in _models.Values)
+        {
+            model.Dispose();
+        }
+        _models.Clear();
+        _modelRefCounts.Clear();
+
+        foreach (var texture in _textures.Values)
+        {
+            texture.Dispose();
+        }
+        _textures.Clear();
+        _textureRefCounts.Clear();
+
+        Scripting.ConsoleLog.Log("[AssetManager] Memória de vídeo (VRAM) limpa completamente.");
     }
 
     private unsafe void ProcessNode(Node* node, Scene* scene, Model model, string directory)
@@ -104,6 +168,7 @@ public class AssetManager
         var vertices = new List<Vertex>();
         var indices = new List<uint>();
         var textures = new List<Texture>();
+        float maxRadiusSq = 0f;
 
         // Process vertices
         for (uint i = 0; i < mesh->MNumVertices; i++)
@@ -119,6 +184,9 @@ public class AssetManager
             
             vertex.Position = new Vector3(mesh->MVertices[i].X, mesh->MVertices[i].Y, mesh->MVertices[i].Z);
             
+            float rSq = vertex.Position.X * vertex.Position.X + vertex.Position.Y * vertex.Position.Y + vertex.Position.Z * vertex.Position.Z;
+            if (rSq > maxRadiusSq) maxRadiusSq = rSq;
+
             if (mesh->MNormals != null)
                 vertex.Normal = new Vector3(mesh->MNormals[i].X, mesh->MNormals[i].Y, mesh->MNormals[i].Z);
             
@@ -168,7 +236,7 @@ public class AssetManager
             textures.AddRange(heightMaps);
         }
 
-        return new Mesh(_gl, vertices, indices, textures);
+        return new Mesh(_gl, vertices, indices, textures, MathF.Sqrt(maxRadiusSq));
     }
 
     private unsafe List<Texture> LoadMaterialTextures(Material* mat, Silk.NET.Assimp.TextureType type, string typeName, string directory)
@@ -187,6 +255,7 @@ public class AssetManager
             if (_textures.ContainsKey(fullPath))
             {
                 textures.Add(_textures[fullPath]);
+                _textureRefCounts[fullPath]++;
             }
             else
             {
@@ -195,6 +264,7 @@ public class AssetManager
                 {
                     textures.Add(texture);
                     _textures[fullPath] = texture;
+                    _textureRefCounts[fullPath] = 1;
                 }
             }
         }

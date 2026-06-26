@@ -8,6 +8,11 @@ class Program
 {
     static void Main(string[] args)
     {
+        string? connectIp = null;
+        int connectPort = 27015;
+        string? token = null;
+        string? remoteProject = null;
+
         for (int i = 0; i < args.Length; i++)
         {
             if (args[i] == "--project" && i + 1 < args.Length)
@@ -18,6 +23,22 @@ class Program
                     System.Environment.CurrentDirectory = projectPath;
                     System.Console.WriteLine($"[Editor] Trabalhando no diretório do projeto: {projectPath}");
                 }
+            }
+            else if (args[i] == "--connect" && i + 1 < args.Length)
+            {
+                connectIp = args[i + 1];
+            }
+            else if (args[i] == "--port" && i + 1 < args.Length)
+            {
+                int.TryParse(args[i + 1], out connectPort);
+            }
+            else if (args[i] == "--token" && i + 1 < args.Length)
+            {
+                token = args[i + 1];
+            }
+            else if (args[i] == "--remote-project" && i + 1 < args.Length)
+            {
+                remoteProject = args[i + 1];
             }
         }
 
@@ -30,10 +51,20 @@ class Program
         engine.AddModule(new ECSModule());       // 3. Lógica local (ECS)
         engine.AddModule(new InputModule());     // 3. Sistema de Input (Snapshots)
         engine.AddModule(new ScriptModule());    // 4. Scripts do usuário (gameplay)
-        engine.AddModule(new NetworkModule());   // 5. Sincronização de Rede
+        
+        var networkModule = new NetworkModule();
+        engine.AddModule(networkModule);   // 5. Sincronização de Rede
         
         // Módulos específicos do Editor
-        engine.AddModule(new EditorUIModule());  // 5. Desenha UI por cima de tudo
+        if (string.IsNullOrEmpty(connectIp))
+        {
+            engine.AddModule(new EditorUIModule());  // Desenha UI local
+        }
+        else
+        {
+            System.Console.WriteLine("[Editor] Iniciando no modo Cliente Remoto...");
+            networkModule.StartClientWithAuth(connectIp, connectPort, token ?? "", remoteProject ?? "");
+        }
 
         // Trava a Thread no Game Loop do Silk.NET
         engine.Run();

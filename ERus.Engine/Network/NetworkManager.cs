@@ -35,6 +35,13 @@ public class NetworkManager
         AssetSync.StartServer(finalTcpPort);
     }
 
+    public void InitializeAsServer(int port, int tcpPort = -1) 
+    {
+        int finalTcpPort = tcpPort == -1 ? port + 1 : tcpPort;
+        Transport.InitializeAsServer(port);
+        AssetSync.StartServer(finalTcpPort);
+    }
+
     public void InitializeAsClient(string ip, int port, int tcpPort = -1) 
     {
         int finalTcpPort = tcpPort == -1 ? port + 1 : tcpPort;

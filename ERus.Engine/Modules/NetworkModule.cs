@@ -73,6 +73,39 @@ public class NetworkModule : IEngineModule
         }
     }
 
+    public void StartServer(int port)
+    {
+        NetworkManager.Stop();
+        
+        try
+        {
+            NetworkManager.InitializeAsServer(port);
+            ConsoleLog.Log($"[Rede] Servidor Dedicado iniciado na porta {port}.");
+
+            var ecs = _engine.GetModule<ECSModule>();
+            var replicationSystem = ecs?.GetSystem<EntityReplicationSystem>();
+
+            if (replicationSystem != null && ecs != null)
+            {
+                NetworkManager.IdentityMap.ClearLocalMap();
+                
+                // Atribui IDs de rede para todas as entidades iniciais carregadas na cena do servidor
+                var allEntities = ecs.ActiveScene.Registry.GetLivingEntities();
+                foreach (var e in allEntities)
+                {
+                    if (!ecs.ActiveScene.Registry.HasComponent<NetworkIdentityComponent>(e))
+                    {
+                        NetworkManager.IdentityMap.AssignNetworkId(ecs.ActiveScene.Registry, e);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ConsoleLog.Error($"[Rede] Erro ao iniciar Servidor: {ex.Message}");
+        }
+    }
+
     public void StartClient(string ip, int port)
     {
         NetworkManager.Stop();
@@ -81,6 +114,44 @@ public class NetworkModule : IEngineModule
         {
             NetworkManager.InitializeAsClient(ip, port);
             ConsoleLog.Log($"[Rede] Cliente tentando conectar em {ip}:{port}.");
+            
+            var ecs = _engine.GetModule<ECSModule>();
+            var replicationSystem = ecs?.GetSystem<EntityReplicationSystem>();
+            if (replicationSystem != null)
+            {
+                NetworkManager.IdentityMap.ClearLocalMap();
+            }
+        }
+        catch (Exception ex)
+        {
+            ConsoleLog.Error($"[Rede] Erro ao conectar: {ex.Message}");
+        }
+    }
+
+    public void StartClientWithAuth(string ip, int port, string token, string projectId)
+    {
+        NetworkManager.Stop();
+        
+        try
+        {
+            Action<LiteNetLib.NetPeer>? onConnect = null;
+            onConnect = (peer) => 
+            {
+                var authPacket = new ERus.Engine.Network.Packets.Auth.AuthRequestPacket 
+                {
+                    Token = token,
+                    ProjectId = projectId
+                };
+                NetworkManager.Dispatcher.SendToPeer(peer, authPacket, LiteNetLib.DeliveryMethod.ReliableOrdered);
+                ConsoleLog.Log($"[Rede] Conectado. Enviando pacote de Autenticação para {projectId}...");
+                
+                NetworkManager.Transport.OnPeerConnectedEvent -= onConnect;
+            };
+
+            NetworkManager.Transport.OnPeerConnectedEvent += onConnect;
+
+            NetworkManager.InitializeAsClient(ip, port);
+            ConsoleLog.Log($"[Rede] Cliente tentando conectar em {ip}:{port} para abrir o projeto {projectId}...");
             
             var ecs = _engine.GetModule<ECSModule>();
             var replicationSystem = ecs?.GetSystem<EntityReplicationSystem>();

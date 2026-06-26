@@ -24,9 +24,16 @@ public class Engine : IDisposable
     private readonly List<IEngineModule> _modules = new List<IEngineModule>();
     public static Engine Instance { get; private set; }
     
+
+    /// <summary>
+    /// Barramento de eventos global.
+    /// </summary>
+    public EventBus EventBus { get; private set; }
+
     public Engine()
     {
         Instance = this;
+        EventBus = new EventBus();
         string assetsDir = System.IO.Path.Combine(System.Environment.CurrentDirectory, "Assets");
         AssetDatabase = new ERus.Engine.Assets.AssetDatabase(assetsDir);
         AssetDatabase.Scan();
@@ -128,6 +135,42 @@ public class Engine : IDisposable
         };
 
         Window.Run();
+    }
+
+    /// <summary>
+    /// Inicializa os módulos e roda o laço principal sem interface gráfica.
+    /// Usado pelo Servidor Dedicado.
+    /// </summary>
+    public void RunHeadless(int targetFps = 60)
+    {
+        foreach (var module in _modules)
+        {
+            module.Initialize(this);
+        }
+
+        double targetDelta = 1.0 / targetFps;
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        double lastTime = 0;
+
+        Console.WriteLine($"[Engine] Rodando em modo Headless ({targetFps} FPS max).");
+
+        while (true)
+        {
+            double currentTime = stopwatch.Elapsed.TotalSeconds;
+            double deltaTime = currentTime - lastTime;
+
+            if (deltaTime >= targetDelta)
+            {
+                lastTime = currentTime;
+                Update(deltaTime);
+                // Rede, Lógica, etc, mas sem renderização gráfica.
+            }
+            else
+            {
+                // Libera a CPU
+                System.Threading.Thread.Sleep(1);
+            }
+        }
     }
 
     /// <summary>

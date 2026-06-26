@@ -16,7 +16,7 @@ public class EditorUIController
     private ImGuiController _imGuiController;
     private ERus.Engine.Core.Engine _engine;
     
-    private EditorWindowManager _windowManager;
+    public EditorWindowManager WindowManager { get; private set; }
     private EditorToolbar _toolbar;
 
     private EditorLayoutManager _layoutManager;
@@ -32,7 +32,7 @@ public class EditorUIController
     public EditorUIController(ERus.Engine.Core.Engine engine)
     {
         _engine = engine;
-        _windowManager = new EditorWindowManager(this, _engine);
+        WindowManager = new EditorWindowManager(this, _engine);
         _toolbar = new EditorToolbar(this, _engine);
         _layoutManager = new EditorLayoutManager();
         _inputHandler = new EditorInputHandler(_engine, UndoSystem);
@@ -48,6 +48,13 @@ public class EditorUIController
         
         LoadFonts(io);
         ApplyDarkTheme();
+        
+        window.FileDrop += OnWindowFileDrop;
+    }
+
+    private void OnWindowFileDrop(string[] files)
+    {
+        WindowManager.Project.ImportFiles(files);
     }
 
     private unsafe void LoadFonts(ImGuiIOPtr io)
@@ -133,7 +140,7 @@ public class EditorUIController
         uint dockspaceId = ImGui.GetID("EditorDockSpace");
         ImGui.DockSpaceOverViewport(dockspaceId, ImGui.GetMainViewport(), ImGuiDockNodeFlags.None);
 
-        _windowManager.DrawWindows();
+        WindowManager.DrawWindows();
 
         _imGuiController.Render();
     }

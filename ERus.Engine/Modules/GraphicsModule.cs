@@ -15,6 +15,7 @@ public class GraphicsModule : IEngineModule
     private GLFramebuffer _gameFramebuffer;
     private SceneRenderer _sceneRenderer;
     private Core.Engine _engine;
+    private ECSModule? _ecsModuleCache;
 
     /// <summary>
     /// ID da textura gerada pelo Framebuffer do GameView.
@@ -65,8 +66,12 @@ public class GraphicsModule : IEngineModule
             _gameFramebuffer.Invalidate((int)GameViewSize.X, (int)GameViewSize.Y);
         }
 
-        var ecsModule = _engine.GetModule<ECSModule>();
-        if (ecsModule == null) return;
+        if (_ecsModuleCache == null)
+        {
+            _ecsModuleCache = _engine.GetModule<ECSModule>();
+            if (_ecsModuleCache == null) return;
+        }
+        var ecsModule = _ecsModuleCache;
 
         // --- RENDER GAME VIEW ---
         _gameFramebuffer.Bind();
@@ -104,8 +109,9 @@ public class GraphicsModule : IEngineModule
             Vector3 pos = new Vector3(t.Position.X, t.Position.Y, t.Position.Z);
 
             Matrix4x4 gameViewMatrix = Matrix4x4.CreateLookAt(pos, pos + forward, up);
+            Matrix4x4 projectionMatrix = Matrix4x4.CreatePerspectiveFieldOfView(camComp.FieldOfView * degToRad, gameAspect, camComp.NearClip, camComp.FarClip);
 
-            _sceneRenderer.Draw(ecsModule.ActiveScene.Registry, gameViewMatrix, gameAspect, null, false, false, camComp.FieldOfView, camComp.NearClip, camComp.FarClip);
+            _sceneRenderer.Draw(ecsModule.ActiveScene.Registry, gameViewMatrix, projectionMatrix, null, false, false);
         }
 
         _gameFramebuffer.Unbind(_engine.CurrentSize);
@@ -113,6 +119,7 @@ public class GraphicsModule : IEngineModule
 
     public void Dispose()
     {
+        ERus.Engine.Assets.AssetManager.Get().ClearAll();
         _gameFramebuffer?.Dispose();
         _sceneRenderer?.Dispose();
     }

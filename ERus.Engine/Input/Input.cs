@@ -9,8 +9,13 @@ public static class Input
 {
     private static InputProfile? _activeProfile;
 
-    // We keep a reference to be accessed by InputModule
-    internal static InputProfile? ActiveProfile => _activeProfile;
+    // We keep a reference to be accessed by InputModule and Editor
+    public static InputProfile? ActiveProfile => _activeProfile;
+
+    /// <summary>
+    /// Posição atual do mouse em coordenadas da tela (ou GameView).
+    /// </summary>
+    public static System.Numerics.Vector2 MousePosition { get; set; } = System.Numerics.Vector2.Zero;
 
     public static void LoadProfile(string filePath)
     {
@@ -58,5 +63,26 @@ public static class Input
             }
         }
         return null;
+    }
+
+    public static void SaveProfile(string filePath)
+    {
+        if (_activeProfile == null) return;
+
+        try
+        {
+            var options = new JsonSerializerOptions 
+            { 
+                Converters = { new JsonStringEnumConverter() },
+                WriteIndented = true
+            };
+            string json = JsonSerializer.Serialize(_activeProfile, options);
+            File.WriteAllText(filePath, json);
+            Console.WriteLine($"[Input] Profile salvo em {filePath}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Input] Falha ao salvar profile {filePath}: {ex.Message}");
+        }
     }
 }

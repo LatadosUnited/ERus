@@ -26,7 +26,8 @@ public class ECSModule : IEngineModule
         ActiveScene = new Scene();
 
         // Registrar os sistemas base (A ordem importa!)
-        var physicsSystem = new PhysicsSystem(ActiveScene.Registry, _engine);
+        var physicsModule = _engine.GetModule<PhysicsModule>() ?? throw new System.Exception("PhysicsModule is missing! It must be initialized before ECSModule.");
+        var physicsSystem = new PhysicsSystem(ActiveScene.Registry, _engine, physicsModule);
         _systems.Add(physicsSystem);
 
         var animatorSystem = new AnimatorSystem(ActiveScene.Registry, _engine);

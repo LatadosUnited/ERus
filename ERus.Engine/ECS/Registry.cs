@@ -7,13 +7,13 @@ public class Registry
 {
     private int _nextEntityId = 0;
     private readonly Queue<int> _availableEntities = new Queue<int>();
-    private readonly List<Entity> _livingEntities = new List<Entity>();
+    private readonly HashSet<Entity> _livingEntities = new HashSet<Entity>();
 
     private readonly Dictionary<Type, IComponentArray> _componentArrays = new Dictionary<Type, IComponentArray>();
 
-    public IReadOnlyList<Entity> GetLivingEntities()
+    public IEnumerable<Entity> GetLivingEntities()
     {
-        return _livingEntities.AsReadOnly();
+        return _livingEntities;
     }
 
     public bool IsAlive(Entity entity)
@@ -95,9 +95,10 @@ public class Registry
     public IEnumerable<Entity> View<T>() where T : struct, IComponent
     {
         var array = GetComponentArray<T>();
-        foreach (var entity in _livingEntities)
+        foreach (var entityId in array.ActiveEntities)
         {
-            if (array.HasData(entity))
+            var entity = new Entity(entityId);
+            if (_livingEntities.Contains(entity))
             {
                 yield return entity;
             }
@@ -111,12 +112,66 @@ public class Registry
         var array1 = GetComponentArray<T1>();
         var array2 = GetComponentArray<T2>();
 
-        foreach (var entity in _livingEntities)
+        // Optimização: iterar pelo menor array
+        var active1 = array1.ActiveEntities;
+        
+        foreach (var entityId in active1)
         {
-            if (array1.HasData(entity) && array2.HasData(entity))
+            var entity = new Entity(entityId);
+            if (_livingEntities.Contains(entity) && array2.HasData(entity))
             {
                 yield return entity;
             }
         }
     }
+
+    // --- Métodos baseados em Type (reflexão) para serialização genérica ---
+
+    /// <summary>
+    /// Retorna todos os tipos de componentes registrados neste Registry.
+    /// </summary>
+    public IEnumerable<Type> GetRegisteredComponentTypes()
+    {
+        return _componentArrays.Keys;
+    }
+
+    /// <summary>
+    /// Verifica se a entidade possui um componente de um tipo específico (via Type, sem genérico).
+    /// </summary>
+    public bool HasComponentByType(Entity entity, Type componentType)
+    {
+        if (!_componentArrays.TryGetValue(componentType, out var array))
+            return false;
+        return array.HasData(entity);
+    }
+
+    /// <summary>
+    /// Obtém o componente de uma entidade como object (boxing). Usado para serialização genérica.
+    /// </summary>
+    public object GetComponentBoxed(Entity entity, Type componentType)
+    {
+        if (!_componentArrays.TryGetValue(componentType, out var array))
+            throw new Exception($"Component {componentType.Name} not registered.");
+        return array.GetDataBoxed(entity);
+    }
+
+    /// <summary>
+    /// Adiciona um componente (já boxed como object) a uma entidade. Usado para deserialização genérica.
+    /// </summary>
+    public void AddComponentBoxed(Entity entity, Type componentType, object component)
+    {
+        if (!_componentArrays.TryGetValue(componentType, out var array))
+            throw new Exception($"Component {componentType.Name} not registered.");
+        array.InsertDataBoxed(entity, component);
+    }
+
+    /// <summary>
+    /// Remove um componente de uma entidade por Type.
+    /// </summary>
+    public void RemoveComponentByType(Entity entity, Type componentType)
+    {
+        if (_componentArrays.TryGetValue(componentType, out var array))
+            array.RemoveDataByEntity(entity);
+    }
 }
+

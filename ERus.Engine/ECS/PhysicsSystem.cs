@@ -21,23 +21,24 @@ public class ERusNarrowPhaseFilter : INarrowPhaseFilter
         _events = events;
     }
 
+    private bool CheckIsTrigger(Entity entity)
+    {
+        if (_registry.HasComponent<BoxColliderComponent>(entity) && _registry.GetComponent<BoxColliderComponent>(entity).IsTrigger) return true;
+        if (_registry.HasComponent<SphereColliderComponent>(entity) && _registry.GetComponent<SphereColliderComponent>(entity).IsTrigger) return true;
+        if (_registry.HasComponent<CapsuleColliderComponent>(entity) && _registry.GetComponent<CapsuleColliderComponent>(entity).IsTrigger) return true;
+        if (_registry.HasComponent<CylinderColliderComponent>(entity) && _registry.GetComponent<CylinderColliderComponent>(entity).IsTrigger) return true;
+        if (_registry.HasComponent<MeshColliderComponent>(entity) && _registry.GetComponent<MeshColliderComponent>(entity).IsTrigger) return true;
+        return false;
+    }
+
     public bool Filter(RigidBodyShape shapeA, RigidBodyShape shapeB, ref JVector point1, ref JVector point2, ref JVector normal, ref float penetration)
     {
         if (shapeA.RigidBody?.Tag is int idA && shapeB.RigidBody?.Tag is int idB)
         {
-            bool isTrigger = false;
-            
             var entityA = new Entity(idA);
             var entityB = new Entity(idB);
             
-            if (_registry.HasComponent<ColliderComponent>(entityA))
-            {
-                if (_registry.GetComponent<ColliderComponent>(entityA).IsTrigger) isTrigger = true;
-            }
-            if (_registry.HasComponent<ColliderComponent>(entityB))
-            {
-                if (_registry.GetComponent<ColliderComponent>(entityB).IsTrigger) isTrigger = true;
-            }
+            bool isTrigger = CheckIsTrigger(entityA) || CheckIsTrigger(entityB);
 
             // Gerar o evento de colisão/trigger
             _events.Enqueue(new CollisionEvent
@@ -56,33 +57,38 @@ public class ERusNarrowPhaseFilter : INarrowPhaseFilter
     }
 }
 
+/// <summary>
+/// Sistema de física do ECS. Orquestra:
+/// 1. Criação/configuração de RigidBodies a partir de componentes
+/// 2. Execução do step de simulação
+/// 3. Sincronização dos resultados de volta para os TransformComponents
+/// 
+/// A criação de shapes foi delegada para PhysicsShapeFactory.
+/// </summary>
 public class PhysicsSystem : BaseSystem
 {
-    private PhysicsModule? _physicsModule;
+    private readonly PhysicsModule _physicsModule;
     private Core.Engine _engine;
     private bool _filterInitialized = false;
     
-    public Queue<CollisionEvent> CollisionEvents { get; private set; } = new Queue<CollisionEvent>();
+    private readonly Queue<CollisionEvent> _collisionEvents = new Queue<CollisionEvent>();
 
-    public PhysicsSystem(Registry registry, Core.Engine engine) : base(registry)
+    public PhysicsSystem(Registry registry, Core.Engine engine, PhysicsModule physicsModule) : base(registry)
     {
         _engine = engine;
+        _physicsModule = physicsModule;
     }
 
     public override void Update(double deltaTime)
     {
-        if (_physicsModule == null)
-        {
-            _physicsModule = _engine.GetModule<PhysicsModule>();
-            if (_physicsModule == null) return;
-        }
 
         if (!_filterInitialized)
         {
-            _physicsModule.PhysicsWorld.NarrowPhaseFilter = new ERusNarrowPhaseFilter(Registry, CollisionEvents);
+            _physicsModule.PhysicsWorld.NarrowPhaseFilter = new ERusNarrowPhaseFilter(Registry, _collisionEvents);
             _filterInitialized = true;
         }
 
+        // --- Fase 1: Criação e configuração de RigidBodies ---
         foreach (var entity in Registry.View<RigidBodyComponent, TransformComponent>())
         {
             ref var rb = ref Registry.GetComponent<RigidBodyComponent>(entity);
@@ -91,41 +97,24 @@ public class PhysicsSystem : BaseSystem
             if (rb.InternalBody == null)
             {
                 var body = _physicsModule.PhysicsWorld.CreateRigidBody();
-                body.Tag = entity.Id; // Tag = Entity ID
+                body.Tag = entity.Id;
                 
-                if (Registry.HasComponent<ColliderComponent>(entity))
-                {
-                    ref var collider = ref Registry.GetComponent<ColliderComponent>(entity);
-                    if (collider.Shape == ColliderShape.Box)
-                    {
-                        body.AddShape(new BoxShape(collider.Size.X, collider.Size.Y, collider.Size.Z));
-                    }
-                    else if (collider.Shape == ColliderShape.Sphere)
-                    {
-                        body.AddShape(new SphereShape(collider.Size.X));
-                    }
-                    else if (collider.Shape == ColliderShape.Capsule)
-                    {
-                        body.AddShape(new CapsuleShape(collider.Size.X, collider.Size.Y));
-                    }
-                    
-                    body.Friction = collider.Friction;
-                    body.Restitution = collider.Restitution;
-                }
+                var globalTransform = PhysicsShapeFactory.GetGlobalTransform(entity, Registry);
+                System.Numerics.Matrix4x4.Invert(globalTransform, out var parentInverse);
+
+                PhysicsShapeFactory.AddShapesFromEntity(entity, body, parentInverse, Registry, _engine);
+                
+                // TODO: Obter PhysicsMaterial real
+                body.Friction = 0.5f;
+                body.Restitution = 0.0f;
 
                 body.Position = new JVector(transform.Position.X, transform.Position.Y, transform.Position.Z);
                 body.SetMassInertia(rb.Mass);
                 body.MotionType = rb.IsKinematic ? MotionType.Kinematic : MotionType.Dynamic;
                 
-                // Aplicar travamento de eixos (Constraints na Inércia)
-                if (rb.FreezeRotationX || rb.FreezeRotationY || rb.FreezeRotationZ)
-                {
-                    JMatrix invInertia = body.InverseInertia;
-                    if (rb.FreezeRotationX) invInertia.M11 = 0;
-                    if (rb.FreezeRotationY) invInertia.M22 = 0;
-                    if (rb.FreezeRotationZ) invInertia.M33 = 0;
-                    body.SetMassInertia(invInertia, rb.Mass, true);
-                }
+                body.AffectedByGravity = rb.UseGravity;
+                
+                ApplyConstraints(body, rb);
                 
                 rb.InternalBody = body;
             }
@@ -143,7 +132,7 @@ public class PhysicsSystem : BaseSystem
             }
         }
         
-        // Sincronizar Joints
+        // --- Fase 2: Sincronizar Joints ---
         foreach (var entity in Registry.View<JointComponent, RigidBodyComponent>())
         {
             ref var joint = ref Registry.GetComponent<JointComponent>(entity);
@@ -160,31 +149,74 @@ public class PhysicsSystem : BaseSystem
                     
                     if (body1 != null && body2 != null)
                     {
-                        // Criar uma BallSocket (Base universal para simular Hinge/Fixed se parametrizado depois)
                         var constraint = _physicsModule.PhysicsWorld.CreateConstraint<Jitter2.Dynamics.Constraints.BallSocket>(body1, body2);
-                        constraint.Initialize(body1.Position); // Pivô no meio do body1
+                        constraint.Initialize(body1.Position); 
                         joint.InternalConstraint = constraint;
                     }
                 }
             }
         }
 
-        _physicsModule.PhysicsWorld.Step((float)deltaTime);
-
-        foreach (var entity in Registry.View<RigidBodyComponent, TransformComponent>())
+        // --- Fase 3: Step da simulação e sincronização ---
+        if (_engine.State == EngineState.Play)
         {
-            ref var rb = ref Registry.GetComponent<RigidBodyComponent>(entity);
-            if (rb.InternalBody == null || rb.IsKinematic) continue;
+            _physicsModule.PhysicsWorld.Step((float)deltaTime);
 
-            var body = (RigidBody)rb.InternalBody;
-            ref var transform = ref Registry.GetComponent<TransformComponent>(entity);
+            while (_collisionEvents.TryDequeue(out var evt))
+            {
+                _engine.EventBus.Publish(evt);
+            }
 
-            transform.Position = new Vector3D<float>(body.Position.X, body.Position.Y, body.Position.Z);
-            
-            rb.LinearVelocity = new Vector3D<float>(body.Velocity.X, body.Velocity.Y, body.Velocity.Z);
-            rb.AngularVelocity = new Vector3D<float>(body.AngularVelocity.X, body.AngularVelocity.Y, body.AngularVelocity.Z);
+            foreach (var entity in Registry.View<RigidBodyComponent, TransformComponent>())
+            {
+                ref var rb = ref Registry.GetComponent<RigidBodyComponent>(entity);
+                if (rb.InternalBody == null || rb.IsKinematic) continue;
+
+                var body = (RigidBody)rb.InternalBody;
+                ref var transform = ref Registry.GetComponent<TransformComponent>(entity);
+
+                transform.Position = new Vector3D<float>(body.Position.X, body.Position.Y, body.Position.Z);
+                
+                rb.LinearVelocity = new Vector3D<float>(body.Velocity.X, body.Velocity.Y, body.Velocity.Z);
+                rb.AngularVelocity = new Vector3D<float>(body.AngularVelocity.X, body.AngularVelocity.Y, body.AngularVelocity.Z);
+            }
+        }
+        else
+        {
+            _collisionEvents.Clear();
+        }
+    }
+
+    private void ApplyConstraints(RigidBody body, RigidBodyComponent rb)
+    {
+        if ((rb.Constraints & RigidbodyConstraints.FreezeRotation) != 0)
+        {
+            JMatrix invInertia = body.InverseInertia;
+            if ((rb.Constraints & RigidbodyConstraints.FreezeRotationX) != 0) invInertia.M11 = 0;
+            if ((rb.Constraints & RigidbodyConstraints.FreezeRotationY) != 0) invInertia.M22 = 0;
+            if ((rb.Constraints & RigidbodyConstraints.FreezeRotationZ) != 0) invInertia.M33 = 0;
+            body.SetMassInertia(invInertia, rb.Mass, true);
         }
         
-        CollisionEvents.Clear();
+        if ((rb.Constraints & RigidbodyConstraints.FreezePosition) == RigidbodyConstraints.FreezePosition)
+        {
+            var constraint = _physicsModule!.PhysicsWorld.CreateConstraint<Jitter2.Dynamics.Constraints.BallSocket>(body, null);
+            constraint.Initialize(body.Position);
+        }
+        else
+        {
+            if ((rb.Constraints & RigidbodyConstraints.FreezePositionX) != 0) {
+                var constraint = _physicsModule!.PhysicsWorld.CreateConstraint<Jitter2.Dynamics.Constraints.PointOnPlane>(body, null);
+                constraint.Initialize(JVector.UnitX, body.Position, body.Position);
+            }
+            if ((rb.Constraints & RigidbodyConstraints.FreezePositionY) != 0) {
+                var constraint = _physicsModule!.PhysicsWorld.CreateConstraint<Jitter2.Dynamics.Constraints.PointOnPlane>(body, null);
+                constraint.Initialize(JVector.UnitY, body.Position, body.Position);
+            }
+            if ((rb.Constraints & RigidbodyConstraints.FreezePositionZ) != 0) {
+                var constraint = _physicsModule!.PhysicsWorld.CreateConstraint<Jitter2.Dynamics.Constraints.PointOnPlane>(body, null);
+                constraint.Initialize(JVector.UnitZ, body.Position, body.Position);
+            }
+        }
     }
 }

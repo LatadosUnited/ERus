@@ -15,6 +15,7 @@ public struct JointComponent : IComponent
     public int TargetEntityId { get; set; }
     
     // Referência interna para amarra na biblioteca de física (Jitter2.Dynamics.Constraints.Constraint)
+    [NonSerializedComponent]
     public object? InternalConstraint { get; set; }
 
     public JointComponent()

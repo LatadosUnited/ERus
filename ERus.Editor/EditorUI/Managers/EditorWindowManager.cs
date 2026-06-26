@@ -15,6 +15,7 @@ public class EditorWindowManager
     public ConsoleWindow Console { get; private set; }
     public SceneViewWindow SceneView { get; private set; }
     public GameViewWindow GameView { get; private set; }
+    public InputMapWindow InputMap { get; private set; }
 
     public EditorWindowManager(EditorUIController controller, ERus.Engine.Core.Engine engine)
     {
@@ -27,6 +28,7 @@ public class EditorWindowManager
         Console = new ConsoleWindow();
         SceneView = new SceneViewWindow(_controller, _engine);
         GameView = new GameViewWindow(_engine);
+        InputMap = new InputMapWindow();
     }
 
     public void DrawWindows()
@@ -56,6 +58,11 @@ public class EditorWindowManager
         ImGui.Begin("Console");
         Console.DrawRawContent();
         ImGui.End();
+
+        if (InputMap.IsOpen)
+        {
+            InputMap.DrawWindow();
+        }
     }
 }
 

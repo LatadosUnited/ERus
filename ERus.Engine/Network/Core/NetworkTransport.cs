@@ -26,6 +26,15 @@ public class NetworkTransport : INetEventListener
         Console.WriteLine($"[Network] Host iniciado na porta {port}");
     }
 
+    public void InitializeAsServer(int port)
+    {
+        IsHost = true; // Servidor dedicado é a autoridade (Host)
+        MyUserId = 0;
+        _netManager = new NetManager(this) { ChannelsCount = 2 };
+        _netManager.Start(port);
+        Console.WriteLine($"[Network] Servidor Dedicado iniciado na porta {port}");
+    }
+
     public void InitializeAsClient(string ip, int port)
     {
         IsHost = false;

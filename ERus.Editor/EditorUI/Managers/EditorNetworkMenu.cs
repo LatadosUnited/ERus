@@ -32,15 +32,6 @@ public class EditorNetworkMenu
             var networkModule = _engine.GetModule<ERus.Engine.Modules.NetworkModule>();
             if (networkModule != null)
             {
-                if (ImGui.Button("Start Host"))
-                {
-                    if (int.TryParse(_netPort, out int port))
-                    {
-                        networkModule.StartHost(port);
-                        _netStatus = $"Hosting (Porta {port})";
-                    }
-                }
-                ImGui.SameLine();
                 if (ImGui.Button("Connect"))
                 {
                     if (int.TryParse(_netPort, out int port))

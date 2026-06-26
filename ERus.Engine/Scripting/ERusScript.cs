@@ -1,4 +1,6 @@
 using ERus.Engine.ECS;
+using ERus.Engine.Modules;
+using System.Numerics;
 
 namespace ERus.Engine.Scripting;
 
@@ -43,6 +45,17 @@ public abstract class ERusScript
     /// Atalho direto para o TransformComponent da entidade dona.
     /// </summary>
     public ref TransformComponent Transform => ref Registry.GetComponent<TransformComponent>(Entity);
+
+    /// <summary>
+    /// Tamanho atual da tela / GameView em pixels.
+    /// </summary>
+    public Vector2 ScreenSize => Engine.GetModule<GraphicsModule>()?.GameViewSize ?? Vector2.Zero;
+
+    /// <summary>
+    /// A entidade que possui a Camera primária (MainCamera) da cena atual.
+    /// Retorna null se nenhuma for encontrada.
+    /// </summary>
+    public Entity? MainCamera => Engine.GetModule<ECSModule>()?.ActiveScene?.MainCamera;
 
     // --- Callbacks do ciclo de vida (override opcional) ---
 

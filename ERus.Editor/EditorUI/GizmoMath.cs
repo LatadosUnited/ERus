@@ -20,15 +20,25 @@ public static class GizmoMath
         float ndcX = (2.0f * mousePos.X) / viewportSize.X - 1.0f;
         float ndcY = 1.0f - (2.0f * mousePos.Y) / viewportSize.Y;
 
-        var clipCoords = new Vector4(ndcX, ndcY, -1.0f, 1.0f);
-        Matrix4x4.Invert(proj, out var invProj);
-        var eyeCoords = Vector4.Transform(clipCoords, invProj);
-        eyeCoords = new Vector4(eyeCoords.X, eyeCoords.Y, -1.0f, 0.0f);
+        var viewProj = view * proj;
+        Matrix4x4.Invert(viewProj, out var invViewProj);
 
+        // Near point (z = -1 in NDC for OpenGL-like projection)
+        var nearPoint = Vector4.Transform(new Vector4(ndcX, ndcY, -1.0f, 1.0f), invViewProj);
+        var pNear = new Vector3(nearPoint.X, nearPoint.Y, nearPoint.Z) / nearPoint.W;
+
+        // Far point (z = 1 in NDC)
+        var farPoint = Vector4.Transform(new Vector4(ndcX, ndcY, 1.0f, 1.0f), invViewProj);
+        var pFar = new Vector3(farPoint.X, farPoint.Y, farPoint.Z) / farPoint.W;
+
+        var direction = Vector3.Normalize(pFar - pNear);
+        
+        // Em projeção ortográfica, a origem do raio não é a posição da câmera,
+        // mas sim o ponto no plano near. (Ortográfica costuma ter M44 == 1.0)
+        bool isOrtho = proj.M44 == 1.0f;
+        
         Matrix4x4.Invert(view, out var invView);
-        var rayWorld = Vector4.Transform(eyeCoords, invView);
-        var direction = Vector3.Normalize(new Vector3(rayWorld.X, rayWorld.Y, rayWorld.Z));
-        var origin = invView.Translation;
+        var origin = isOrtho ? pNear : invView.Translation;
 
         return (origin, direction);
     }

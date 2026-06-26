@@ -486,3 +486,20 @@ graphify-out/
 
 # Custom Build Scripts Output
 Builds/
+
+# ImGui config (local per-user)
+imgui.ini
+
+# Input profile (local per-user)
+input_profile.json
+
+# Temporary patch/debug scripts
+*.py
+dump_shapes.cs
+
+# Temporary test projects
+Dumper/
+TempJitterTest/
+
+# Implementation plans (conversation artifacts, not docs)
+/implementation_plan*.md

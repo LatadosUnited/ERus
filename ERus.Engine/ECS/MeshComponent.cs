@@ -5,7 +5,10 @@ public enum PrimitiveMeshType
     None,
     Cube,
     Sphere,
-    Plane
+    Plane,
+    Capsule,
+    Cylinder,
+    Quad
 }
 
 public struct MeshComponent : IComponent

@@ -46,6 +46,35 @@ public class SceneViewWindow : EditorWindow
             if (ImGui.IsKeyPressed(ImGuiKey.W)) _currentMode = GizmoMode.Translate;
             if (ImGui.IsKeyPressed(ImGuiKey.E)) _currentMode = GizmoMode.Rotate;
             if (ImGui.IsKeyPressed(ImGuiKey.R)) _currentMode = GizmoMode.Scale;
+            if (ImGui.IsKeyPressed(ImGuiKey.F) && EditorServices.Selection.SelectedEntity.HasValue)
+            {
+                var reg = _engine.GetModule<ECSModule>()?.ActiveScene.Registry;
+                if (reg != null)
+                {
+                    var entity = EditorServices.Selection.SelectedEntity.Value;
+                    if (reg.HasComponent<TransformComponent>(entity))
+                    {
+                        ref var t = ref reg.GetComponent<TransformComponent>(entity);
+                        var ePos = new Vector3(t.Position.X, t.Position.Y, t.Position.Z);
+                        float sizeEst = 5.0f; // Default
+                        if (reg.HasComponent<BoxColliderComponent>(entity))
+                        {
+                            var coll = reg.GetComponent<BoxColliderComponent>(entity);
+                            sizeEst = MathF.Max(coll.Size.X, MathF.Max(coll.Size.Y, coll.Size.Z)) * 3.0f;
+                        }
+                        else if (reg.HasComponent<SphereColliderComponent>(entity))
+                        {
+                            var coll = reg.GetComponent<SphereColliderComponent>(entity);
+                            sizeEst = coll.Radius * 3.0f;
+                        }
+                        else
+                        {
+                             sizeEst = MathF.Max(t.Scale.X, MathF.Max(t.Scale.Y, t.Scale.Z)) * 3.0f;
+                        }
+                        _camera.Focus(ePos, sizeEst);
+                    }
+                }
+            }
         }
 
         // --- Toolbar ---
@@ -93,7 +122,8 @@ public class SceneViewWindow : EditorWindow
                 }
             }
 
-            _sceneRenderer.Draw(registry, _camera.GetViewMatrix(), sceneAspect, EditorServices.Selection.SelectedEntity, isLockedByOther, true);
+            var projMat = _camera.GetProjectionMatrix(sceneAspect);
+            _sceneRenderer.Draw(registry, _camera.GetViewMatrix(), projMat, EditorServices.Selection.SelectedEntity, isLockedByOther, true);
             
             _sceneFramebuffer.Unbind(_engine.CurrentSize);
         }
@@ -104,11 +134,46 @@ public class SceneViewWindow : EditorWindow
         var cursorPos = ImGui.GetCursorScreenPos();
         ImGui.Image((IntPtr)textureId, size, new Vector2(0, 1), new Vector2(1, 0));
 
+        if (ImGui.BeginDragDropTarget())
+        {
+            unsafe
+            {
+                var assetPayload = ImGui.AcceptDragDropPayload("ASSET_PATH");
+                if (assetPayload.NativePtr != null)
+                {
+                    string sourceFile = ERus.Editor.EditorUI.Managers.DragDropState.DraggedPayload;
+                    string ext = System.IO.Path.GetExtension(sourceFile).ToLowerInvariant();
+                    if (ext == ".obj" || ext == ".fbx" || ext == ".gltf" || ext == ".glb")
+                    {
+                        float sceneAspect = size.X / size.Y;
+                        if (sceneAspect == 0) sceneAspect = 1.0f;
+                        var projMat = _camera.GetProjectionMatrix(sceneAspect);
+                        var viewMat = _camera.GetViewMatrix();
+                        var mPos = ImGui.GetMousePos() - cursorPos;
+                        var (rOrigin, rDir) = GizmoMath.ScreenToRay(mPos, size, projMat, viewMat);
+                        
+                        Vector3 spawnPos = Vector3.Zero;
+                        // Ray intersect floor plane Y=0
+                        if (rDir.Y != 0)
+                        {
+                            float t = -rOrigin.Y / rDir.Y;
+                            if (t > 0) spawnPos = rOrigin + rDir * t;
+                        }
+                        
+                        TryInstantiate3DModel(sourceFile, registry, spawnPos, netModule);
+                    }
+                }
+            }
+            ImGui.EndDragDropTarget();
+        }
+
         var drawList = ImGui.GetWindowDrawList();
 
         if (registry == null) return;
 
-        var proj = Matrix4x4.CreatePerspectiveFieldOfView(MathF.PI / 4f, size.X / size.Y, 0.1f, 100f);
+        float sa = size.X / size.Y;
+        if (sa == 0) sa = 1.0f;
+        var proj = _camera.GetProjectionMatrix(sa);
         var view = _camera.GetViewMatrix();
         var viewProj = view * proj;
 
@@ -260,6 +325,13 @@ public class SceneViewWindow : EditorWindow
         ImGui.Text("|");
         ImGui.SameLine();
 
+        bool isOrtho = _camera.IsOrthographic;
+        if (ImGui.Checkbox("Orthographic", ref isOrtho))
+        {
+            _camera.IsOrthographic = isOrtho;
+        }
+
+        ImGui.SameLine();
         ImGui.Checkbox("Local", ref _isLocalSpace);
 
         ImGui.SameLine();
@@ -325,6 +397,30 @@ public class SceneViewWindow : EditorWindow
         else if (!additive)
         {
             EditorServices.Selection.ClearSelection();
+        }
+    }
+
+    private void TryInstantiate3DModel(string sourceFile, Registry registry, Vector3 position, NetworkModule? netModule)
+    {
+        var guid = _engine.AssetDatabase.GetGuidByPath(sourceFile);
+        if (guid == null)
+        {
+            _engine.AssetDatabase.ProcessFile(sourceFile);
+            guid = _engine.AssetDatabase.GetGuidByPath(sourceFile);
+        }
+
+        if (guid != null)
+        {
+            var newEntity = registry.CreateEntity();
+            registry.AddComponent(newEntity, new TransformComponent { Position = new Silk.NET.Maths.Vector3D<float>(position.X, position.Y, position.Z) });
+            registry.AddComponent(newEntity, new TagComponent { Name = System.IO.Path.GetFileNameWithoutExtension(sourceFile) });
+            registry.AddComponent(newEntity, new MeshComponent { Type = PrimitiveMeshType.None, AssetGuid = guid.Value });
+            
+            if (netModule != null && netModule.NetworkManager?.IsHost == true)
+            {
+                int netId = (netModule.NetworkManager?.IdentityMap.AssignNetworkId(registry, newEntity) ?? -1);
+                netModule.Replication?.SendSpawn(netId, System.IO.Path.GetFileNameWithoutExtension(sourceFile), 0);
+            }
         }
     }
 }

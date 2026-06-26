@@ -39,11 +39,11 @@ Para compilar o Hub, execute o seguinte comando:
 
 **Exemplo:**
 ```powershell
-.\scripts\build_hub_release.ps1 v0.1.0
+.\scripts\build_hub_release.ps1 v0.1.2
 ```
 *(Se não passar a versão, o script usará a padrão, por exemplo, `v1.0.0`).*
 
-Este comando irá gerar um arquivo `ERus.Hub-v0.1.0.zip` na pasta `Builds/`.
+Este comando irá gerar um arquivo `ERus.Hub-v0.1.2.zip` na pasta `Builds/`.
 
 ## 3. Subindo as versões para o GitHub (Releases)
 
@@ -60,7 +60,7 @@ gh release create v0.3.7 .\Builds\ERus.Engine-v0.3.7.zip --title "ERus Engine v0
 
 **Para o Hub:**
 ```powershell
-gh release create v0.1.1 .\Builds\ERus.Hub-v0.1.0.zip --title "ERus Hub v0.1.1" --notes "Notas de atualização do Hub." --repo "LatadosUnited/ERusHub"
+gh release create v0.1.2 .\Builds\ERus.Hub-v0.1.2.zip --title "ERus Hub v0.1.2" --notes "Notas de atualização do Hub." --repo "LatadosUnited/ERusHub"
 ```
 
 ### Opção B: Passo a passo pela Interface Web
