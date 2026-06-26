@@ -168,6 +168,19 @@ public class NetworkModule : IEngineModule
 
             NetworkManager.Transport.OnPeerConnectedEvent += onConnect;
 
+            NetworkManager.Dispatcher.SubscribeReusable<ERus.Engine.Network.Packets.Auth.AuthResponsePacket>((packet, peer) => 
+            {
+                if (packet.Success)
+                {
+                    ConsoleLog.Log("[Rede] Autenticação no servidor bem-sucedida! Entrando no projeto...");
+                }
+                else
+                {
+                    ConsoleLog.Error("[Rede] Falha na Autenticação! Desconectando...");
+                    NetworkManager.Stop();
+                }
+            });
+
             NetworkManager.InitializeAsClient(ip, port);
             ConsoleLog.Log($"[Rede] Cliente tentando conectar em {ip}:{port} para abrir o projeto {projectId}...");
             
