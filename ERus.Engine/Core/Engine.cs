@@ -110,10 +110,13 @@ public class Engine : IDisposable
         options.UpdatesPerSecond = 0;
         options.FramesPerSecond = 0;
         
+        Silk.NET.Windowing.Glfw.GlfwWindowing.Use();
+        
         Window = Silk.NET.Windowing.Window.Create(options);
 
         Window.Load += () =>
         {
+            Silk.NET.Input.Glfw.GlfwInput.RegisterPlatform();
             Gl = Window.CreateOpenGL();
             Input = Window.CreateInput();
 
