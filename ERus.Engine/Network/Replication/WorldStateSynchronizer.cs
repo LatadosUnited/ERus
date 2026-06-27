@@ -144,7 +144,7 @@ public class WorldStateSynchronizer
                 if (registry.HasComponent<ScriptComponent>(entity))
                 {
                     var scriptComp = registry.GetComponent<ScriptComponent>(entity);
-                    var scriptPacket = new UpdateScriptPacket { NetworkId = netId };
+                    var sDataList = new List<ScriptPacketData>();
                     foreach (var s in scriptComp.Scripts)
                     {
                         var sData = new ScriptPacketData
@@ -152,8 +152,9 @@ public class WorldStateSynchronizer
                             ScriptTypeName = s.ScriptTypeName,
                             FieldValues = s.FieldValues.ToDictionary(k => k.Key, v => v.Value)
                         };
-                        scriptPacket.Scripts.Add(sData);
+                        sDataList.Add(sData);
                     }
+                    var scriptPacket = new UpdateScriptPacket { NetworkId = netId, Scripts = sDataList.ToArray() };
                     _dispatcher.SendToPeer(peer, scriptPacket, DeliveryMethod.ReliableOrdered);
                 }
             }

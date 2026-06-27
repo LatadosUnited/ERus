@@ -20,6 +20,31 @@ public class NetworkPacketDispatcher
             (writer, vector) => { writer.Put(vector.X); writer.Put(vector.Y); writer.Put(vector.Z); },
             reader => new Vector3D<float>(reader.GetFloat(), reader.GetFloat(), reader.GetFloat())
         );
+
+        _packetProcessor.RegisterNestedType<ERus.Engine.Network.Packets.Events.ScriptPacketData>(
+            (writer, data) => {
+                writer.Put(data.ScriptTypeName);
+                writer.Put(data.FieldValues.Count);
+                foreach (var kvp in data.FieldValues)
+                {
+                    writer.Put(kvp.Key);
+                    writer.Put(kvp.Value);
+                }
+            },
+            reader => {
+                var data = new ERus.Engine.Network.Packets.Events.ScriptPacketData();
+                data.ScriptTypeName = reader.GetString();
+                int fieldCount = reader.GetInt();
+                data.FieldValues = new System.Collections.Generic.Dictionary<string, string>(fieldCount);
+                for (int f = 0; f < fieldCount; f++)
+                {
+                    string key = reader.GetString();
+                    string val = reader.GetString();
+                    data.FieldValues[key] = val;
+                }
+                return data;
+            }
+        );
     }
 
     private void OnNetworkReceive(NetPeer peer, NetPacketReader reader, byte channelNumber, DeliveryMethod method)

@@ -70,7 +70,7 @@ public class PacketSerializationTests
         var original = new UpdateScriptPacket
         {
             NetworkId = 7,
-            Scripts = new List<ScriptPacketData>
+            Scripts = new[]
             {
                 new ScriptPacketData
                 {
@@ -84,13 +84,37 @@ public class PacketSerializationTests
             }
         };
 
+        var processor = new NetPacketProcessor();
+        processor.RegisterNestedType<ScriptPacketData>(
+            (w, data) => {
+                w.Put(data.ScriptTypeName);
+                w.Put(data.FieldValues.Count);
+                foreach (var kvp in data.FieldValues) {
+                    w.Put(kvp.Key);
+                    w.Put(kvp.Value);
+                }
+            },
+            r => {
+                var data = new ScriptPacketData();
+                data.ScriptTypeName = r.GetString();
+                int fieldCount = r.GetInt();
+                data.FieldValues = new Dictionary<string, string>(fieldCount);
+                for (int f = 0; f < fieldCount; f++) {
+                    data.FieldValues[r.GetString()] = r.GetString();
+                }
+                return data;
+            }
+        );
+
         var writer = new NetDataWriter();
-        original.Serialize(writer);
+        processor.Write(writer, original);
 
         var reader = new NetDataReader(writer.Data);
-        var deserialized = new UpdateScriptPacket();
-        deserialized.Deserialize(reader);
+        UpdateScriptPacket? deserialized = null;
+        processor.SubscribeReusable<UpdateScriptPacket, LiteNetLib.NetPeer>((packet, peer) => { deserialized = packet; });
+        processor.ReadAllPackets(reader, null);
 
+        Assert.NotNull(deserialized);
         Assert.Equal(original.NetworkId, deserialized.NetworkId);
         Assert.Single(deserialized.Scripts);
         Assert.Equal(original.Scripts[0].ScriptTypeName, deserialized.Scripts[0].ScriptTypeName);
