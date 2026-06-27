@@ -144,7 +144,9 @@ public class Engine : IDisposable
     /// Inicializa os módulos e roda o laço principal sem interface gráfica.
     /// Usado pelo Servidor Dedicado.
     /// </summary>
-    public void RunHeadless(int targetFps = 60)
+    /// <param name="targetFps">FPS alvo para o loop de simulação.</param>
+    /// <param name="cancellationToken">Token para encerrar o loop graciosamente.</param>
+    public void RunHeadless(int targetFps = 60, System.Threading.CancellationToken cancellationToken = default)
     {
         foreach (var module in _modules)
         {
@@ -157,7 +159,7 @@ public class Engine : IDisposable
 
         Console.WriteLine($"[Engine] Rodando em modo Headless ({targetFps} FPS max).");
 
-        while (true)
+        while (!cancellationToken.IsCancellationRequested)
         {
             double currentTime = stopwatch.Elapsed.TotalSeconds;
             double deltaTime = currentTime - lastTime;
@@ -174,6 +176,9 @@ public class Engine : IDisposable
                 System.Threading.Thread.Sleep(1);
             }
         }
+
+        Console.WriteLine("[Engine] Modo Headless encerrado.");
+        Dispose();
     }
 
     /// <summary>
@@ -201,8 +206,10 @@ public class Engine : IDisposable
             module.Render(deltaTime);
         }
 
-        // Previne uso extremo de CPU caso o VSync falhe ou seja desativado pelo driver
-        System.Threading.Thread.Sleep(10);
+        // Reduz uso de CPU quando VSync está desativado ou falha no driver.
+        // Com VSync ativo, o driver já bloqueia até o próximo scanline.
+        if (Window?.VSync == false)
+            System.Threading.Thread.Sleep(1);
     }
 
     /// <summary>

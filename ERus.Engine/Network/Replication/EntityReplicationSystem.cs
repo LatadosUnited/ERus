@@ -43,6 +43,19 @@ public class EntityReplicationSystem : BaseSystem
         }
     }
 
+    /// <summary>
+    /// Registra um handler que faz relay do pacote (se host) e depois aplica no ECS.
+    /// Reduz o boilerplate repetitivo de "if (IsHost) SendToAllExcept + aplicar".
+    /// </summary>
+    private void RegisterRelayedHandler<T>(Action<T, NetPeer> applyAction, DeliveryMethod relayMethod = DeliveryMethod.ReliableOrdered) where T : class, new()
+    {
+        _dispatcher.SubscribeReusable<T>((packet, peer) =>
+        {
+            if (_transport.IsHost) _dispatcher.SendToAllExcept(packet, peer, relayMethod);
+            applyAction(packet, peer);
+        });
+    }
+
     public override void Update(double deltaTime)
     {
         while (_completedDownloads.TryDequeue(out var downloaded))
@@ -173,10 +186,8 @@ public class EntityReplicationSystem : BaseSystem
             }
         });
 
-        _dispatcher.SubscribeReusable<SpawnEntityPacket>((packet, peer) =>
+        RegisterRelayedHandler<SpawnEntityPacket>((packet, peer) =>
         {
-            if (_transport.IsHost) _dispatcher.SendToAllExcept(packet, peer, DeliveryMethod.ReliableOrdered);
-            
             // Aplicar no ECS
             var entity = Registry.CreateEntity();
             Registry.AddComponent(entity, new NetworkIdentityComponent { NetworkId = packet.NetworkId, LockUserId = -1 });
@@ -217,10 +228,8 @@ public class EntityReplicationSystem : BaseSystem
             _identityMap.Map(packet.NetworkId, entity);
         });
 
-        _dispatcher.SubscribeReusable<UpdateMeshPacket>((packet, peer) =>
+        RegisterRelayedHandler<UpdateMeshPacket>((packet, peer) =>
         {
-            if (_transport.IsHost) _dispatcher.SendToAllExcept(packet, peer, DeliveryMethod.ReliableOrdered);
-            
             if (_identityMap.TryGetEntity(packet.NetworkId, out var entity))
             {
                 MeshComponent meshComp = Registry.HasComponent<MeshComponent>(entity) 
@@ -265,10 +274,8 @@ public class EntityReplicationSystem : BaseSystem
             }
         });
 
-        _dispatcher.SubscribeReusable<LockPacket>((packet, peer) =>
+        RegisterRelayedHandler<LockPacket>((packet, peer) =>
         {
-            if (_transport.IsHost) _dispatcher.SendToAllExcept(packet, peer, DeliveryMethod.ReliableOrdered);
-            
             // Aplicar no ECS
             if (_identityMap.TryGetEntity(packet.NetworkId, out var entity))
             {
@@ -280,10 +287,8 @@ public class EntityReplicationSystem : BaseSystem
             }
         });
 
-        _dispatcher.SubscribeReusable<UnlockPacket>((packet, peer) =>
+        RegisterRelayedHandler<UnlockPacket>((packet, peer) =>
         {
-            if (_transport.IsHost) _dispatcher.SendToAllExcept(packet, peer, DeliveryMethod.ReliableOrdered);
-            
             // Aplicar no ECS
             if (_identityMap.TryGetEntity(packet.NetworkId, out var entity))
             {
@@ -295,10 +300,8 @@ public class EntityReplicationSystem : BaseSystem
             }
         });
 
-        _dispatcher.SubscribeReusable<RenameEntityPacket>((packet, peer) =>
+        RegisterRelayedHandler<RenameEntityPacket>((packet, peer) =>
         {
-            if (_transport.IsHost) _dispatcher.SendToAllExcept(packet, peer, DeliveryMethod.ReliableOrdered);
-            
             // Aplicar no ECS
             if (_identityMap.TryGetEntity(packet.NetworkId, out var entity))
             {
@@ -310,10 +313,8 @@ public class EntityReplicationSystem : BaseSystem
             }
         });
 
-        _dispatcher.SubscribeReusable<DestroyEntityPacket>((packet, peer) =>
+        RegisterRelayedHandler<DestroyEntityPacket>((packet, peer) =>
         {
-            if (_transport.IsHost) _dispatcher.SendToAllExcept(packet, peer, DeliveryMethod.ReliableOrdered);
-            
             _lastEntityTicks.Remove(packet.NetworkId);
             
             // Aplicar no ECS
@@ -324,10 +325,8 @@ public class EntityReplicationSystem : BaseSystem
             }
         });
 
-        _dispatcher.SubscribeReusable<EngineStatePacket>((packet, peer) =>
+        RegisterRelayedHandler<EngineStatePacket>((packet, peer) =>
         {
-            if (_transport.IsHost) _dispatcher.SendToAllExcept(packet, peer, DeliveryMethod.ReliableOrdered);
-            
             if (!_transport.IsHost)
             {
                 var targetState = (ERus.Engine.Core.EngineState)packet.State;
@@ -350,10 +349,8 @@ public class EntityReplicationSystem : BaseSystem
                 }
             }
         });
-        _dispatcher.SubscribeReusable<UpdateCameraPacket>((packet, peer) =>
+        RegisterRelayedHandler<UpdateCameraPacket>((packet, peer) =>
         {
-            if (_transport.IsHost) _dispatcher.SendToAllExcept(packet, peer, DeliveryMethod.ReliableOrdered);
-            
             if (_identityMap.TryGetEntity(packet.NetworkId, out var entity))
             {
                 var cam = Registry.HasComponent<CameraComponent>(entity) ? Registry.GetComponent<CameraComponent>(entity) : new CameraComponent();
@@ -369,10 +366,8 @@ public class EntityReplicationSystem : BaseSystem
             }
         });
 
-        _dispatcher.SubscribeReusable<UpdatePhysicsPacket>((packet, peer) =>
+        RegisterRelayedHandler<UpdatePhysicsPacket>((packet, peer) =>
         {
-            if (_transport.IsHost) _dispatcher.SendToAllExcept(packet, peer, DeliveryMethod.ReliableOrdered);
-            
             if (_identityMap.TryGetEntity(packet.NetworkId, out var entity))
             {
                 var rb = Registry.HasComponent<RigidBodyComponent>(entity) ? Registry.GetComponent<RigidBodyComponent>(entity) : new RigidBodyComponent();
@@ -390,10 +385,8 @@ public class EntityReplicationSystem : BaseSystem
             }
         });
 
-        _dispatcher.SubscribeReusable<UpdateScriptPacket>((packet, peer) =>
+        RegisterRelayedHandler<UpdateScriptPacket>((packet, peer) =>
         {
-            if (_transport.IsHost) _dispatcher.SendToAllExcept(packet, peer, DeliveryMethod.ReliableOrdered);
-            
             if (_identityMap.TryGetEntity(packet.NetworkId, out var entity))
             {
                 var sc = Registry.HasComponent<ScriptComponent>(entity) ? Registry.GetComponent<ScriptComponent>(entity) : new ScriptComponent();
@@ -413,10 +406,8 @@ public class EntityReplicationSystem : BaseSystem
             }
         });
 
-        _dispatcher.SubscribeReusable<LoadScenePacket>((packet, peer) =>
+        RegisterRelayedHandler<LoadScenePacket>((packet, peer) =>
         {
-            if (_transport.IsHost) _dispatcher.SendToAllExcept(packet, peer, DeliveryMethod.ReliableOrdered);
-            
             if (!_transport.IsHost)
             {
                 var ecs = _engine.GetModule<ERus.Engine.Modules.ECSModule>();

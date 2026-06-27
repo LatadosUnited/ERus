@@ -79,6 +79,30 @@ public class InspectorWindow : EditorWindow
 
         var entity = EditorServices.Selection.SelectedEntity!.Value;
 
+        bool isLockedByOther = false;
+        if (registry.HasComponent<NetworkIdentityComponent>(entity))
+        {
+            var netId = registry.GetComponent<NetworkIdentityComponent>(entity);
+            if (netId.LockUserId != -1)
+            {
+                var netModule = _engine.GetModule<ERus.Engine.Modules.NetworkModule>();
+                if (netModule != null && netModule.NetworkManager != null)
+                {
+                    if (netId.LockUserId != netModule.NetworkManager.MyUserId)
+                    {
+                        isLockedByOther = true;
+                    }
+                }
+            }
+        }
+
+        if (isLockedByOther)
+        {
+            ImGui.TextColored(new Vector4(1.0f, 0.4f, 0.4f, 1.0f), "🔒 Bloqueado por outro usuário.");
+            ImGui.Separator();
+            ImGui.BeginDisabled();
+        }
+
         // TAG COMPONENT
         if (registry.HasComponent<TagComponent>(entity))
         {

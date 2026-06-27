@@ -11,6 +11,7 @@ public class NetworkTransport : INetEventListener
 
     public bool IsHost { get; private set; }
     public int MyUserId { get; private set; }
+    public int ConnectedPeersCount => _netManager?.ConnectedPeersCount ?? 0;
 
     // Eventos
     public Action<NetPeer>? OnPeerConnectedEvent;

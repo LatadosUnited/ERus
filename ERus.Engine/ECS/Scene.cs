@@ -50,7 +50,8 @@ public class Scene
     public Scene Clone()
     {
         var newScene = new Scene();
-        // Cópia profunda do Registry aqui no futuro
+        // Copia o Registry profundamente: entidades, IDs, componentes
+        newScene.Registry = Registry.Clone();
         return newScene;
     }
 }

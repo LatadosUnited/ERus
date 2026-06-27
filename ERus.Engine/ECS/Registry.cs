@@ -6,10 +6,10 @@ namespace ERus.Engine.ECS;
 public class Registry
 {
     private int _nextEntityId = 0;
-    private readonly Queue<int> _availableEntities = new Queue<int>();
-    private readonly HashSet<Entity> _livingEntities = new HashSet<Entity>();
+    private Queue<int> _availableEntities = new Queue<int>();
+    private HashSet<Entity> _livingEntities = new HashSet<Entity>();
 
-    private readonly Dictionary<Type, IComponentArray> _componentArrays = new Dictionary<Type, IComponentArray>();
+    private Dictionary<Type, IComponentArray> _componentArrays = new Dictionary<Type, IComponentArray>();
 
     public IEnumerable<Entity> GetLivingEntities()
     {
@@ -172,6 +172,27 @@ public class Registry
     {
         if (_componentArrays.TryGetValue(componentType, out var array))
             array.RemoveDataByEntity(entity);
+    }
+
+    // --- Clonagem profunda ---
+
+    /// <summary>
+    /// Cria uma cópia profunda (snapshot) deste Registry.
+    /// Todas as entidades, IDs e componentes são duplicados.
+    /// Não copia componentes marcados com [NonSerializedComponent] (ex: IsDirty).
+    /// </summary>
+    public Registry Clone()
+    {
+        var clone = new Registry();
+        clone._nextEntityId = _nextEntityId;
+        clone._availableEntities = new Queue<int>(_availableEntities);
+        clone._livingEntities = new HashSet<Entity>(_livingEntities);
+        clone._componentArrays = new Dictionary<Type, IComponentArray>(_componentArrays.Count);
+        foreach (var kvp in _componentArrays)
+        {
+            clone._componentArrays[kvp.Key] = kvp.Value.Clone();
+        }
+        return clone;
     }
 }
 

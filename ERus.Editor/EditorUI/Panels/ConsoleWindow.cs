@@ -18,6 +18,7 @@ public class ConsoleWindow : EditorWindow
     private bool _showWarnings = true;
     private bool _showErrors = true;
     private bool _autoScroll = true;
+    private string _searchFilter = "";
 
     public ConsoleWindow() : base("Console") { }
 
@@ -28,6 +29,11 @@ public class ConsoleWindow : EditorWindow
         {
             ConsoleLog.Clear();
         }
+        ImGui.SameLine();
+
+        ImGui.PushItemWidth(200f);
+        ImGui.InputTextWithHint("##Search", "Pesquisar logs...", ref _searchFilter, 128);
+        ImGui.PopItemWidth();
         ImGui.SameLine();
 
         ImGui.PushStyleColor(ImGuiCol.Text, new Vector4(1.0f, 1.0f, 1.0f, 1.0f));
@@ -61,6 +67,10 @@ public class ConsoleWindow : EditorWindow
                 if (entry.Level == ConsoleLog.LogLevel.Warning && !_showWarnings) continue;
                 if (entry.Level == ConsoleLog.LogLevel.Error && !_showErrors) continue;
 
+                // Filtro de Busca
+                if (!string.IsNullOrEmpty(_searchFilter) && !entry.Message.Contains(_searchFilter, System.StringComparison.OrdinalIgnoreCase))
+                    continue;
+
                 // Cor baseada no nível
                 var color = entry.Level switch
                 {
@@ -68,6 +78,12 @@ public class ConsoleWindow : EditorWindow
                     ConsoleLog.LogLevel.Error => new Vector4(1.0f, 0.3f, 0.3f, 1.0f),
                     _ => new Vector4(0.85f, 0.85f, 0.85f, 1.0f)
                 };
+
+                bool isNetwork = entry.Message.StartsWith("[Rede]");
+                if (isNetwork && entry.Level == ConsoleLog.LogLevel.Info)
+                {
+                    color = new Vector4(0.3f, 0.8f, 1.0f, 1.0f); // Azul claro para logs de rede info
+                }
 
                 // Prefixo de nível
                 var prefix = entry.Level switch

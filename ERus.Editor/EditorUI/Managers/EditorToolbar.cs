@@ -83,6 +83,19 @@ public class EditorToolbar
 
             DrawPlayControls();
 
+            var netModule = _engine.GetModule<ERus.Engine.Modules.NetworkModule>();
+            if (netModule != null && netModule.NetworkManager != null)
+            {
+                int peerCount = netModule.NetworkManager.ConnectedPeersCount;
+                if (peerCount > 0 || netModule.NetworkManager.IsHost)
+                {
+                    string text = $"{FontAwesome.NetworkWired} Users: {peerCount + 1}"; // +1 for local user
+                    float textWidth = ImGui.CalcTextSize(text).X;
+                    ImGui.SameLine(ImGui.GetWindowWidth() - textWidth - 20);
+                    ImGui.TextColored(new Vector4(0.4f, 0.8f, 1.0f, 1.0f), text);
+                }
+            }
+
             ImGui.EndMainMenuBar();
         }
 

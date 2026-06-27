@@ -10,6 +10,15 @@ class Program
     static void Main(string[] args)
     {
         Console.WriteLine("Iniciando ERus Dedicated Server...");
+
+        using var cts = new System.Threading.CancellationTokenSource();
+        Console.CancelKeyPress += (sender, e) =>
+        {
+            e.Cancel = true;
+            Console.WriteLine("[Server] Encerrando...");
+            cts.Cancel();
+        };
+
         ServerDatabase.Initialize();
 
         using var engine = new ERus.Engine.Core.Engine();
@@ -18,7 +27,7 @@ class Program
         engine.AddModule(new PhysicsModule());
         engine.AddModule(new ECSModule());
         engine.AddModule(new ScriptModule());
-        
+
         var networkModule = new NetworkModule();
         engine.AddModule(networkModule);
 
@@ -62,6 +71,6 @@ class Program
 
         Console.WriteLine("Servidor rodando. Pressione Ctrl+C para encerrar.");
         
-        engine.RunHeadless(60); 
+        engine.RunHeadless(60, cts.Token); 
     }
 }

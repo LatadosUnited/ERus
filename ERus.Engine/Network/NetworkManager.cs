@@ -27,6 +27,7 @@ public class NetworkManager
 
     public bool IsHost => Transport.IsHost;
     public int MyUserId => Transport.MyUserId;
+    public int ConnectedPeersCount => Transport.ConnectedPeersCount;
 
     public void InitializeAsHost(int port, int tcpPort = -1) 
     {

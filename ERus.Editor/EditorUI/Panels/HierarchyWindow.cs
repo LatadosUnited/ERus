@@ -5,6 +5,7 @@ using ImGuiNET;
 using ERus.Engine.Core;
 using ERus.Engine.Modules;
 using ERus.Engine.ECS;
+using ERus.Engine.Scripting;
 
 namespace ERus.Editor.EditorUI.Panels;
 
@@ -260,6 +261,18 @@ public class HierarchyWindow : EditorWindow
         if (registry.HasComponent<TagComponent>(entity))
             name = registry.GetComponent<TagComponent>(entity).Name;
 
+        bool isNetworked = false;
+        bool isLocked = false;
+        if (registry.HasComponent<NetworkIdentityComponent>(entity))
+        {
+            var netId = registry.GetComponent<NetworkIdentityComponent>(entity);
+            isNetworked = true;
+            isLocked = netId.LockUserId != -1;
+        }
+
+        string netIcon = isNetworked ? (isLocked ? FontAwesome.Link : FontAwesome.NetworkWired) : "";
+        string displayName = string.IsNullOrEmpty(netIcon) ? $"{icon} {name}" : $"{icon} {name}  {netIcon}";
+
         if (registry.HasComponent<CameraComponent>(entity))
             icon = FontAwesome.Camera;
         else if (registry.HasComponent<MeshComponent>(entity))
@@ -316,7 +329,9 @@ public class HierarchyWindow : EditorWindow
         }
         else
         {
-            opened = ImGui.TreeNodeEx((IntPtr)(entity.Id + 1), flags, $"{icon} {name}");
+            if (isLocked) ImGui.PushStyleColor(ImGuiCol.Text, new System.Numerics.Vector4(0.6f, 0.6f, 0.6f, 1.0f));
+            opened = ImGui.TreeNodeEx((IntPtr)(entity.Id + 1), flags, displayName);
+            if (isLocked) ImGui.PopStyleColor();
         }
 
         // Seleção ao clicar
@@ -357,6 +372,34 @@ public class HierarchyWindow : EditorWindow
                 registry.DestroyEntity(entity);
                 EditorServices.Selection.SelectedEntities.Remove(entity);
             }
+            
+            if (isNetworked)
+            {
+                ImGui.Separator();
+                if (!isLocked)
+                {
+                    if (ImGui.MenuItem($"{FontAwesome.Link} Take Control"))
+                    {
+                        ref var netId = ref registry.GetComponent<NetworkIdentityComponent>(entity);
+                        var netModule = _engine.GetModule<NetworkModule>();
+                        int myPeerId = netModule?.NetworkManager?.MyUserId ?? 0;
+                        netId.LockUserId = myPeerId; // Locally lock immediately (predictive)
+                        // TODO: Enviar LockEntityPacket
+                        ConsoleLog.Log($"[Rede] Took control of {name}");
+                    }
+                }
+                else
+                {
+                    if (ImGui.MenuItem($"{FontAwesome.LinkSlash} Release Control"))
+                    {
+                        ref var netId = ref registry.GetComponent<NetworkIdentityComponent>(entity);
+                        netId.LockUserId = -1; // Locally unlock
+                        // TODO: Enviar UnlockEntityPacket
+                        ConsoleLog.Log($"[Rede] Released control of {name}");
+                    }
+                }
+            }
+            
             ImGui.EndPopup();
         }
 

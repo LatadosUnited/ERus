@@ -12,13 +12,19 @@ public interface IComponentArray
     void RemoveDataByEntity(Entity entity);
     
     IEnumerable<int> ActiveEntities { get; }
+
+    /// <summary>
+    /// Clona todos os dados deste array para um novo IComponentArray (cópia profunda).
+    /// O novo array terá os mesmos entity IDs e os mesmos dados de componentes.
+    /// </summary>
+    IComponentArray Clone();
 }
 
 public class ComponentArray<T> : IComponentArray where T : struct, IComponent
 {
     private readonly T[] _components;
-    private readonly Dictionary<int, int> _entityToIndex;
-    private readonly Dictionary<int, int> _indexToEntity;
+    private Dictionary<int, int> _entityToIndex;
+    private Dictionary<int, int> _indexToEntity;
     private int _size;
 
     public IEnumerable<int> ActiveEntities => _entityToIndex.Keys;
@@ -96,6 +102,19 @@ public class ComponentArray<T> : IComponentArray where T : struct, IComponent
     public void RemoveDataByEntity(Entity entity)
     {
         RemoveData(entity);
+    }
+
+    // --- Clonagem profunda ---
+
+    public IComponentArray Clone()
+    {
+        var clone = new ComponentArray<T>(_components.Length);
+        // Copia o array de componentes (structs — cópia por valor)
+        Array.Copy(_components, clone._components, _size);
+        clone._entityToIndex = new Dictionary<int, int>(_entityToIndex);
+        clone._indexToEntity = new Dictionary<int, int>(_indexToEntity);
+        clone._size = _size;
+        return clone;
     }
 }
 
