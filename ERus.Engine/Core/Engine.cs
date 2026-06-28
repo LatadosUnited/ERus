@@ -110,7 +110,8 @@ public class Engine : IDisposable
         options.UpdatesPerSecond = 0;
         options.FramesPerSecond = 0;
         
-        Silk.NET.Windowing.Glfw.GlfwWindowing.Use();
+        Silk.NET.Windowing.Glfw.GlfwWindowing.RegisterPlatform();
+        Silk.NET.Windowing.Sdl.SdlWindowing.RegisterPlatform();
         
         Window = Silk.NET.Windowing.Window.Create(options);
 
