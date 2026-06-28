@@ -30,11 +30,16 @@ public class Engine : IDisposable
     /// </summary>
     public EventBus EventBus { get; private set; }
 
-    public Engine()
+    public Engine(string? projectDirectory = null)
     {
         Instance = this;
         EventBus = new EventBus();
-        string assetsDir = System.IO.Path.Combine(System.Environment.CurrentDirectory, "Assets");
+        
+        string baseDir = string.IsNullOrEmpty(projectDirectory) 
+            ? System.Environment.CurrentDirectory 
+            : projectDirectory;
+            
+        string assetsDir = System.IO.Path.Combine(baseDir, "Assets");
         AssetDatabase = new ERus.Engine.Assets.AssetDatabase(assetsDir);
         AssetDatabase.Scan();
     }

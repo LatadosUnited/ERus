@@ -33,22 +33,25 @@ dotnet build ERus.Hub/ERus.Hub.csproj
 When the user asks to "send to GitHub" or "create a release", follow these steps carefully:
 
 ### 1. Compile in Release Mode
-Publish the Hub (and/or Editor, depending on what the user wants to release) as a single, self-contained executable for Windows.
+Publish the Hub and Editor as self-contained standard directories (NOT single-file) so that native dependencies load correctly for Silk.NET.
 
 ```powershell
 # Publish Hub
-dotnet publish ERus.Hub/ERus.Hub.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+dotnet publish ERus.Hub/ERus.Hub.csproj -c Release -r win-x64 --self-contained true
 
 # Publish Editor
-dotnet publish ERus.Editor/ERus.Editor.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+dotnet publish ERus.Editor/ERus.Editor.csproj -c Release -r win-x64 --self-contained true
 ```
 
 ### 2. Zip the Binaries
-Use PowerShell to compress the generated `.exe` files into a zip archive.
+Use PowerShell to compress the generated `publish` folders into zip archives.
 
 ```powershell
 # Zip the Hub Release
-Compress-Archive -Path "ERus.Hub\bin\Release\net10.0\win-x64\publish\ERus.Hub.exe" -DestinationPath "ERus-Hub-vX.Y.Z.zip" -Force
+Compress-Archive -Path "ERus.Hub\bin\Release\net10.0\win-x64\publish\*" -DestinationPath "ERus-Hub-vX.Y.Z.zip" -Force
+
+# Zip the Editor Release
+Compress-Archive -Path "ERus.Editor\bin\Release\net10.0\win-x64\publish\*" -DestinationPath "ERus-Editor-vX.Y.Z.zip" -Force
 ```
 
 ### 3. Git Tag and Push
@@ -61,13 +64,15 @@ git tag vX.Y.Z
 git push origin main --tags
 ```
 
-### 4. Create GitHub Release using GitHub CLI
-Use the `gh` command-line tool (which must be authenticated) to create the release and upload the zip file.
+### 4. Provide GitHub Release Command to the User
+Do NOT run the `gh release create` command yourself, as it requires the user's authenticated GitHub CLI session.
+Instead, output the exact `gh release create` command in a code block so the user can easily copy and paste it into their terminal.
 
 ```powershell
-gh release create vX.Y.Z ERus-Hub-vX.Y.Z.zip --title "ERus Hub vX.Y.Z" --notes "Release notes here..."
+gh release create vX.Y.Z ERus-Hub-vX.Y.Z.zip ERus-Editor-vX.Y.Z.zip --title "ERus vX.Y.Z" --notes "Release vX.Y.Z"
 ```
 
 ## Important Notes
 - Always confirm the version number (`vX.Y.Z`) with the user before tagging and releasing.
 - Make sure to test the build (`dotnet build`) before attempting to publish.
+- Always provide the `gh release create` command for the user instead of executing it.

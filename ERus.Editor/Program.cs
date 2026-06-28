@@ -12,17 +12,19 @@ class Program
         int connectPort = 27015;
         string? token = null;
         string? remoteProject = null;
+        string? baseDirectory = null;
 
         for (int i = 0; i < args.Length; i++)
         {
             if (args[i] == "--project" && i + 1 < args.Length)
             {
-                string projectPath = args[i + 1];
-                if (System.IO.Directory.Exists(projectPath))
+                baseDirectory = args[i + 1];
+                if (!System.IO.Directory.Exists(baseDirectory))
                 {
-                    System.Environment.CurrentDirectory = projectPath;
-                    System.Console.WriteLine($"[Editor] Trabalhando no diretório do projeto: {projectPath}");
+                    System.IO.Directory.CreateDirectory(baseDirectory);
                 }
+                System.Environment.CurrentDirectory = baseDirectory;
+                System.Console.WriteLine($"[Editor] Trabalhando no diretório do projeto: {baseDirectory}");
             }
             else if (args[i] == "--connect" && i + 1 < args.Length)
             {
@@ -43,7 +45,7 @@ class Program
         }
 
         // Instancia a Engine orquestradora
-        using var engine = new ERus.Engine.Core.Engine();
+        using var engine = new ERus.Engine.Core.Engine(baseDirectory);
 
         // Módulos da Engine principal
         engine.AddModule(new GraphicsModule());  // 1. Limpa tela (fundo azul)

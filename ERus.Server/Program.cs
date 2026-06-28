@@ -21,7 +21,20 @@ class Program
 
         ServerDatabase.Initialize();
 
-        using var engine = new ERus.Engine.Core.Engine();
+        string? projectId = null;
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (args[i] == "--project" && i + 1 < args.Length)
+            {
+                projectId = args[i + 1];
+            }
+        }
+
+        string serverProjectDir = projectId != null 
+            ? System.IO.Path.Combine("ServerData", "Projects", projectId)
+            : System.Environment.CurrentDirectory;
+
+        using var engine = new ERus.Engine.Core.Engine(serverProjectDir);
         
         // Headless mode only needs logic and networking
         engine.AddModule(new PhysicsModule());

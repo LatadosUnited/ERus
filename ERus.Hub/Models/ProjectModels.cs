@@ -36,6 +36,7 @@ public class SavedServer
 public class HubConfig
 {
     public string DefaultInstallDirectory { get; set; } = string.Empty;
+    public string DefaultCacheDirectory { get; set; } = string.Empty;
     public List<ProjectData> Projects { get; set; } = new List<ProjectData>();
     public List<EngineInstall> Installs { get; set; } = new List<EngineInstall>();
     public List<SavedServer> Servers { get; set; } = new List<SavedServer>();

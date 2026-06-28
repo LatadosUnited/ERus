@@ -15,6 +15,7 @@ public class InstallsTab
     private GitHubReleaseManager _releaseManager;
 
     private string _installDirectoryPath = "";
+    private string _cacheDirectoryPath = "";
     private bool _isFolderPickerOpen = false;
 
     // Modal Add Engine state
@@ -40,6 +41,10 @@ public class InstallsTab
             ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ERusHub", "Engines")
             : _config.DefaultInstallDirectory;
 
+        _cacheDirectoryPath = string.IsNullOrEmpty(_config.DefaultCacheDirectory) 
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ERusHub", "Cache")
+            : _config.DefaultCacheDirectory;
+
         FetchReleases(false);
     }
 
@@ -60,7 +65,7 @@ public class InstallsTab
         ImGui.InputText("##InstallDir", ref _installDirectoryPath, 256);
         ImGui.SameLine();
         ImGui.BeginDisabled(_isFolderPickerOpen);
-        if (ImGui.Button("..."))
+        if (ImGui.Button("...##BtnInstall"))
         {
             _isFolderPickerOpen = true;
             Task.Run(() => 
@@ -75,9 +80,35 @@ public class InstallsTab
         }
         ImGui.EndDisabled();
         ImGui.SameLine();
-        if (ImGui.Button("Save Path"))
+        if (ImGui.Button("Save Path##BtnInstallSave"))
         {
             _config.DefaultInstallDirectory = _installDirectoryPath;
+            _ = ConfigManager.SaveAsync(_config);
+        }
+
+        ImGui.Spacing();
+        ImGui.Text("Remote Projects Cache Directory:");
+        ImGui.InputText("##CacheDir", ref _cacheDirectoryPath, 256);
+        ImGui.SameLine();
+        ImGui.BeginDisabled(_isFolderPickerOpen);
+        if (ImGui.Button("...##BtnCache"))
+        {
+            _isFolderPickerOpen = true;
+            Task.Run(() => 
+            {
+                var dialogResult = NativeFileDialogSharp.Dialog.FolderPicker();
+                if (dialogResult.IsOk)
+                {
+                    _cacheDirectoryPath = dialogResult.Path;
+                }
+                _isFolderPickerOpen = false;
+            });
+        }
+        ImGui.EndDisabled();
+        ImGui.SameLine();
+        if (ImGui.Button("Save Path##BtnCacheSave"))
+        {
+            _config.DefaultCacheDirectory = _cacheDirectoryPath;
             _ = ConfigManager.SaveAsync(_config);
         }
 

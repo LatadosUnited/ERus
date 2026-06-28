@@ -222,10 +222,15 @@ public class ProjectsTab
         {
             try
             {
+                string cachePath = string.IsNullOrEmpty(_config.DefaultCacheDirectory) 
+                    ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ERusHub", "Cache")
+                    : _config.DefaultCacheDirectory;
+                string projectCacheDir = Path.Combine(cachePath, "Projects", project.Id);
+
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = install.ExecutablePath,
-                    Arguments = $"--connect {_activeServer?.Ip} --port 27015 --token {_activeServer?.Token} --remote-project {project.Id}",
+                    Arguments = $"--connect {_activeServer?.Ip} --port 27015 --token {_activeServer?.Token} --remote-project {project.Id} --project \"{projectCacheDir}\"",
                     UseShellExecute = false,
                     WorkingDirectory = Path.GetDirectoryName(install.ExecutablePath)
                 };
