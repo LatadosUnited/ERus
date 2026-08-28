@@ -11,7 +11,7 @@ timeline
         v0.5.21 (Atual) : Co-edição ao vivo : Hub Remote Sharing : Server Health Monitor
         v0.5.30 : Materiais, Texturas & Sprites 2D : Drag & Drop de Imagens : PBR Básico
         v0.5.40 : Canvas 2D & UI de Gameplay : UIImage, UIText, UIButton : Âncoras
-        v0.5.50 : Novos Objetos, Iluminação & Componentes : Luzes, Partículas, CharacterController : Skybox
+        v0.5.50 : Novos Objetos, Iluminação, Prefabs & Componentes : Luzes, Neblina 3D, CharacterController
         v0.5.60 : Gameplay & Físicas em C# : OnCollision / OnTrigger : Raycasting C#
         v0.5.70 : Animator Controller & Animações : State Machine & Cross-Fade : Grafo Visual
         v0.5.80 : Áudio 3D Espacial : AudioSource & Listener : Efeitos e Música
@@ -19,6 +19,8 @@ timeline
         v0.6.00 : AI-Native Engine : Servidor MCP Integrado : Automação por IA
         v0.6.50 : Project Settings & Editor Preferences : Player, Física, Gráficos : Tags & Layers : Auto-Save
         v0.7.00 : Standalone Game Builder : Templates de Projetos no Hub : Exportador .exe
+        v0.8.00 : Profiler de Performance & Diagnósticos : Draw Calls & GC : Frustum Culling
+        v0.9.00 : Asset Bundling (.pak) & Multiplataforma : Criptografia de Assets : Windows & Linux
         v1.0.00 : Gold Release Oficial : Produção Comercial Completa
 ```
 
@@ -108,7 +110,7 @@ timeline
 
 ---
 
-### 🤖 **v0.6.0: AI-Native Engine & Servidor MCP**
+### 🤖 **v0.6.00: AI-Native Engine & Servidor MCP**
 - 🧠 **Servidor MCP Integrado:** Protocolo Model Context Protocol nativo (HTTP/SSE + Stdio Bridge).
 - 🛠️ **Ferramentas de IA:** Inspeção de cenas, criação de entidades, ajuste de materiais, Play Mode e diagnóstico de logs do console.
 - 🛡️ **Segurança & Estabilidade:** Session Token contra *DNS Rebinding*, Time-Budgeting de 4ms (anti-freeze) e respeito ao *Temporal Locking*.
@@ -130,14 +132,32 @@ timeline
 
 ---
 
-### 🚀 **v0.7.0: Game Builder & Templates de Projeto**
+### 🚀 **v0.7.00: Standalone Game Builder & Templates de Projeto**
 - 🎮 **Exportador Standalone ("Build Game"):** Gerar pasta com o `.exe` final do jogo empacotado e otimizado utilizando as configurações definidas no *Project Settings*.
 - 📦 **Templates no Hub:** Criação rápida com templates *Blank*, *3D FPS/Third-Person Starter* e *Multiplayer Arena*.
 - 🔍 **Auto-Detecção de Engines:** Varredura e cadastro automático de versões compiladas localmente no Hub.
 
 ---
 
-### 🏆 **v1.0.0: Gold Release Oficial (Produção Comercial)**
+### 📊 **v0.8.00: Profiler de Performance & Diagnósticos**
+- 📈 **Janela `Window -> Profiler` no Editor:**
+  - Gráfico em tempo real de frametime (CPU ms vs GPU ms).
+  - Breakdown detalhado por subsistemas ECS (Física, Animação, Render, Scripts).
+  - Contador de Draw Calls, contagem de Triângulos/Vértices e monitor de alocação de memória RAM e GC (`Garbage Collector`).
+- 👁️ **Frustum Culling Avançado:**
+  - Descarte automático de objetos fora do campo de visão da câmera para máxima taxa de quadros (FPS) em cenas grandes.
+
+---
+
+### 📦 **v0.9.00: Asset Bundling (`.pak`), Criptografia & Multiplataforma**
+- 🔒 **Empacotamento de Assets (`.pak` / `.data`):**
+  - Compactação e criptografia de texturas, modelos 3D, sons e cenas em um pacote protegido, impedindo extração não autorizada de assets do jogo final.
+- 🐧 **Suporte Multiplataforma:**
+  - Exportação e compilação nativa para **Windows (x64)** e **Linux (x64 / Steam Deck)**.
+
+---
+
+### 🏆 **v1.0.00: Gold Release Oficial (Produção Comercial)**
 - 💎 **Estabilidade & Polimento:** Otimizações finais de performance em cenas complexas e partidas multiplayer prolongadas.
 - 📚 **Documentação Completa:** Manuais de API, tutoriais passo a passo e documentação de arquitetura finalizada.
 - 📦 **Distribuição Oficial:** Pacotes de instalação consolidados.
