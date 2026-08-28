@@ -16,6 +16,7 @@ timeline
         v0.5.70 : Animator Controller & Animações : State Machine & Cross-Fade : Grafo Visual
         v0.5.80 : Áudio 3D Espacial : AudioSource & Listener : Efeitos e Música
         v0.6.00 : AI-Native Engine : Servidor MCP Integrado : Automação por IA
+        v0.6.50 : Project Settings & Editor Preferences : Player, Física, Gráficos : Tags & Layers : Auto-Save
         v0.7.00 : Standalone Game Builder : Templates de Projetos no Hub : Exportador .exe
         v1.0.00 : Gold Release Oficial : Produção Comercial Completa
 ```
@@ -98,8 +99,23 @@ timeline
 
 ---
 
+### ⚙️ **v0.6.50: Project Settings & Editor Preferences**
+- 🎮 **Janela `Edit -> Project Settings...` (`ProjectSettings.json` salvo no projeto):**
+  - **Player:** Nome do Jogo, Versão (`1.0.0`), Nome da Empresa, Ícone do Jogo e **Cena Inicial Padrão (`Startup Scene`)**.
+  - **Physics:** Gravidade global (X, Y, Z), *Fixed Timestep* configurável (50Hz / 60Hz / custom) e atrito padrão.
+  - **Graphics:** VSync (On/Off), Limite de Taxa de Quadros (Max FPS), Anti-Aliasing (MSAA) e Cor de Fundo Padrão.
+  - **Network:** Tick rate de replicação padrão (30Hz), timeout de desconexão e porta padrão do servidor.
+  - **Tags & Layers:** Gerenciador visual de Tags personalizadas e Matriz de Colisão entre Layers.
+- 🛠️ **Janela `Edit -> Preferences...` (`EditorPrefs.json` salvo em AppData):**
+  - **Scene View Camera:** Velocidade da câmera de voo (*Camera Speed*), sensibilidade do mouse e inversão de eixo.
+  - **IDE Externa:** Escolha do editor de código padrão (VS Code, Visual Studio 2022, Rider) ao abrir scripts C#.
+  - **Auto-Save:** Intervalo de salvamento automático da cena em segundo plano.
+  - **Customização da Viewport:** Cor, opacidade e espaçamento do grid 3D.
+
+---
+
 ### 🚀 **v0.7.0: Game Builder & Templates de Projeto**
-- 🎮 **Exportador Standalone ("Build Game"):** Gerar pasta com o `.exe` final do jogo empacotado e otimizado (sem o editor).
+- 🎮 **Exportador Standalone ("Build Game"):** Gerar pasta com o `.exe` final do jogo empacotado e otimizado utilizando as configurações definidas no *Project Settings*.
 - 📦 **Templates no Hub:** Criação rápida com templates *Blank*, *3D FPS/Third-Person Starter* e *Multiplayer Arena*.
 - 🔍 **Auto-Detecção de Engines:** Varredura e cadastro automático de versões compiladas localmente no Hub.
 
