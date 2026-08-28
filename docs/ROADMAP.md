@@ -11,7 +11,7 @@ timeline
         v0.5.21 (Atual) : Co-edição ao vivo : Hub Remote Sharing : Server Health Monitor
         v0.5.30 : Materiais, Texturas & Sprites 2D : Drag & Drop de Imagens : PBR Básico
         v0.5.40 : Canvas 2D & UI de Gameplay : UIImage, UIText, UIButton : Âncoras
-        v0.5.50 : Eventos de Física nos Scripts : OnCollision / OnTrigger : Raycasting C#
+        v0.5.50 : Gameplay, Físicas & Animator Controller : OnCollision / Raycasts : State Machine & Cross-Fade
         v0.5.60 : Áudio 3D Espacial : AudioSource & Listener : Efeitos e Música
         v0.6.00 : AI-Native Engine : Servidor MCP Integrado : Automação por IA
         v0.7.00 : Standalone Game Builder : Templates de Projetos no Hub : Exportador .exe
@@ -46,10 +46,14 @@ timeline
 
 ---
 
-### 💥 **v0.5.50: Gameplay & Físicas em C#**
+### 💥 **v0.5.50: Gameplay, Físicas & Animator Controller (Mecanim)**
 - ⚡ **Callbacks de Colisão nos Scripts:** `OnCollisionEnter`, `OnCollisionExit`, `OnTriggerEnter`, `OnTriggerExit` automáticos em classes `ERusScript`.
 - 🎯 **Raycasting em C#:** `Physics.Raycast(ray, out hitInfo, maxDistance)` acessível diretamente nos scripts.
 - 🕹️ **Manipulação Dinâmica:** Métodos de física (`AddForce`, `AddImpulse`, controle de velocidade linear/angular).
+- 🎬 **Animator State Machine (Estilo Mecanim):**
+  - **Parâmetros de Animação:** `SetFloat`, `SetBool`, `SetTrigger` e `SetInt` para controle via script.
+  - **Transições com Cross-Fade:** Interpolação suave e mesclagem de poses (blending) entre animações sem cortes secos.
+  - **Janela de Grafo de Animações no Editor:** Editor visual de estados e setas de transição com nós gráficos.
 
 ---
 
