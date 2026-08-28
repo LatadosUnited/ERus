@@ -21,6 +21,26 @@ public class NetworkPacketDispatcher
             reader => new Vector3D<float>(reader.GetFloat(), reader.GetFloat(), reader.GetFloat())
         );
 
+        _packetProcessor.RegisterNestedType<System.Numerics.Vector2>(
+            (writer, vector) => { writer.Put(vector.X); writer.Put(vector.Y); },
+            reader => new System.Numerics.Vector2(reader.GetFloat(), reader.GetFloat())
+        );
+
+        _packetProcessor.RegisterNestedType<System.Numerics.Vector3>(
+            (writer, vector) => { writer.Put(vector.X); writer.Put(vector.Y); writer.Put(vector.Z); },
+            reader => new System.Numerics.Vector3(reader.GetFloat(), reader.GetFloat(), reader.GetFloat())
+        );
+
+        _packetProcessor.RegisterNestedType<System.Numerics.Vector4>(
+            (writer, vector) => { writer.Put(vector.X); writer.Put(vector.Y); writer.Put(vector.Z); writer.Put(vector.W); },
+            reader => new System.Numerics.Vector4(reader.GetFloat(), reader.GetFloat(), reader.GetFloat(), reader.GetFloat())
+        );
+
+        _packetProcessor.RegisterNestedType<System.Numerics.Quaternion>(
+            (writer, q) => { writer.Put(q.X); writer.Put(q.Y); writer.Put(q.Z); writer.Put(q.W); },
+            reader => new System.Numerics.Quaternion(reader.GetFloat(), reader.GetFloat(), reader.GetFloat(), reader.GetFloat())
+        );
+
         _packetProcessor.RegisterNestedType<ERus.Engine.Network.Packets.Events.ScriptPacketData>(
             (writer, data) => {
                 writer.Put(data.ScriptTypeName);

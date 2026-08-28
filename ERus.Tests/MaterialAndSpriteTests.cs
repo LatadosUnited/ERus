@@ -45,6 +45,22 @@ public class MaterialAndSpriteTests
     }
 
     [Fact]
+    public void NetworkPacketDispatcher_CanRegisterUpdateMaterialPacket_WithoutInvalidTypeException()
+    {
+        var transport = new ERus.Engine.Network.Core.NetworkTransport();
+        var dispatcher = new ERus.Engine.Network.Core.NetworkPacketDispatcher(transport);
+
+        bool received = false;
+        // Não deve lançar InvalidTypeException para Vector4, Vector2, etc.
+        dispatcher.SubscribeReusable<UpdateMaterialPacket>((packet, peer) =>
+        {
+            received = true;
+        });
+
+        Assert.False(received);
+    }
+
+    [Fact]
     public void MaterialComponent_SceneSerializer_GenericSerialization_Works()
     {
         var scene = new Scene();
