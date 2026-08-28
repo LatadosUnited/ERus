@@ -33,6 +33,8 @@ public static class PrimitiveMeshGenerator
     public const int CapsuleSegments = 32;
     public const int CapsuleRings = 16;
 
+    public static readonly Vector3 DefaultMaterialColor = new Vector3(0.82f, 0.82f, 0.82f);
+
     public static MeshData GenerateCube()
     {
         // 8 vertices, 36 indices
@@ -43,13 +45,9 @@ public static class PrimitiveMeshGenerator
             new Vector3(-0.5f, -0.5f,  0.5f), new Vector3( 0.5f, -0.5f,  0.5f),
             new Vector3( 0.5f,  0.5f,  0.5f), new Vector3(-0.5f,  0.5f,  0.5f)
         };
-        Vector3[] colors = {
-            new Vector3(1,0,0), new Vector3(0,1,0), new Vector3(0,0,1), new Vector3(1,1,0),
-            new Vector3(1,0,1), new Vector3(0,1,1), new Vector3(1,1,1), new Vector3(0.5f,0.5f,0.5f)
-        };
         for (int i = 0; i < 8; i++) {
             verts.Add(positions[i].X); verts.Add(positions[i].Y); verts.Add(positions[i].Z);
-            verts.Add(colors[i].X); verts.Add(colors[i].Y); verts.Add(colors[i].Z);
+            verts.Add(DefaultMaterialColor.X); verts.Add(DefaultMaterialColor.Y); verts.Add(DefaultMaterialColor.Z);
         }
 
         uint[] indices = {
@@ -82,7 +80,7 @@ public static class PrimitiveMeshGenerator
         };
         for (int i = 0; i < 4; i++) {
             verts.Add(pos[i].X); verts.Add(pos[i].Y); verts.Add(pos[i].Z);
-            verts.Add(1); verts.Add(1); verts.Add(1); // Color white
+            verts.Add(DefaultMaterialColor.X); verts.Add(DefaultMaterialColor.Y); verts.Add(DefaultMaterialColor.Z);
         }
         uint[] indices = { 0, 3, 2, 2, 1, 0 }; // Top face
         var mesh = new MeshData { Vertices = verts.ToArray(), Indices = indices };
@@ -100,7 +98,7 @@ public static class PrimitiveMeshGenerator
         };
         for (int i = 0; i < 4; i++) {
             verts.Add(pos[i].X); verts.Add(pos[i].Y); verts.Add(pos[i].Z);
-            verts.Add(1); verts.Add(1); verts.Add(1);
+            verts.Add(DefaultMaterialColor.X); verts.Add(DefaultMaterialColor.Y); verts.Add(DefaultMaterialColor.Z);
         }
         uint[] indices = { 0, 1, 2, 2, 3, 0 };
         var mesh = new MeshData { Vertices = verts.ToArray(), Indices = indices };
@@ -128,7 +126,7 @@ public static class PrimitiveMeshGenerator
                 float z = radius * MathF.Sin(phi) * MathF.Sin(theta);
 
                 verts.Add(x); verts.Add(y); verts.Add(z);
-                verts.Add(1f); verts.Add(1f); verts.Add(1f); // Color
+                verts.Add(DefaultMaterialColor.X); verts.Add(DefaultMaterialColor.Y); verts.Add(DefaultMaterialColor.Z);
             }
         }
 
@@ -170,20 +168,20 @@ public static class PrimitiveMeshGenerator
 
             // Bottom
             verts.Add(x); verts.Add(-halfHeight); verts.Add(z);
-            verts.Add(0.8f); verts.Add(0.8f); verts.Add(0.8f);
+            verts.Add(DefaultMaterialColor.X); verts.Add(DefaultMaterialColor.Y); verts.Add(DefaultMaterialColor.Z);
             
             // Top
             verts.Add(x); verts.Add(halfHeight); verts.Add(z);
-            verts.Add(0.8f); verts.Add(0.8f); verts.Add(0.8f);
+            verts.Add(DefaultMaterialColor.X); verts.Add(DefaultMaterialColor.Y); verts.Add(DefaultMaterialColor.Z);
         }
 
         int topCenterIdx = verts.Count / 6;
         verts.Add(0); verts.Add(halfHeight); verts.Add(0);
-        verts.Add(1); verts.Add(1); verts.Add(1);
+        verts.Add(DefaultMaterialColor.X); verts.Add(DefaultMaterialColor.Y); verts.Add(DefaultMaterialColor.Z);
 
         int bottomCenterIdx = verts.Count / 6;
         verts.Add(0); verts.Add(-halfHeight); verts.Add(0);
-        verts.Add(1); verts.Add(1); verts.Add(1);
+        verts.Add(DefaultMaterialColor.X); verts.Add(DefaultMaterialColor.Y); verts.Add(DefaultMaterialColor.Z);
 
         for (int i = 0; i < CylinderSegments; i++)
         {
@@ -234,7 +232,7 @@ public static class PrimitiveMeshGenerator
                 float z = radius * MathF.Sin(phi) * MathF.Sin(theta);
 
                 verts.Add(x); verts.Add(y); verts.Add(z);
-                verts.Add(0.9f); verts.Add(0.9f); verts.Add(0.9f);
+                verts.Add(DefaultMaterialColor.X); verts.Add(DefaultMaterialColor.Y); verts.Add(DefaultMaterialColor.Z);
             }
         }
 
@@ -252,7 +250,7 @@ public static class PrimitiveMeshGenerator
                 float z = radius * MathF.Sin(phi) * MathF.Sin(theta);
 
                 verts.Add(x); verts.Add(y); verts.Add(z);
-                verts.Add(0.9f); verts.Add(0.9f); verts.Add(0.9f);
+                verts.Add(DefaultMaterialColor.X); verts.Add(DefaultMaterialColor.Y); verts.Add(DefaultMaterialColor.Z);
             }
         }
 
