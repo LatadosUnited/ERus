@@ -11,8 +11,9 @@ timeline
         v0.5.21 (Atual) : Co-edição ao vivo : Hub Remote Sharing : Server Health Monitor
         v0.5.30 : Materiais, Texturas & Sprites 2D : Drag & Drop de Imagens : PBR Básico
         v0.5.40 : Canvas 2D & UI de Gameplay : UIImage, UIText, UIButton : Âncoras
-        v0.5.50 : Gameplay, Físicas & Animator Controller : OnCollision / Raycasts : State Machine & Cross-Fade
-        v0.5.60 : Áudio 3D Espacial : AudioSource & Listener : Efeitos e Música
+        v0.5.50 : Gameplay & Físicas em C# : OnCollision / OnTrigger : Raycasting C#
+        v0.5.60 : Animator Controller & Animações : State Machine & Cross-Fade : Grafo Visual
+        v0.5.70 : Áudio 3D Espacial : AudioSource & Listener : Efeitos e Música
         v0.6.00 : AI-Native Engine : Servidor MCP Integrado : Automação por IA
         v0.7.00 : Standalone Game Builder : Templates de Projetos no Hub : Exportador .exe
         v1.0.00 : Gold Release Oficial : Produção Comercial Completa
@@ -46,18 +47,26 @@ timeline
 
 ---
 
-### 💥 **v0.5.50: Gameplay, Físicas & Animator Controller (Mecanim)**
+### 💥 **v0.5.50: Gameplay & Físicas em C#**
 - ⚡ **Callbacks de Colisão nos Scripts:** `OnCollisionEnter`, `OnCollisionExit`, `OnTriggerEnter`, `OnTriggerExit` automáticos em classes `ERusScript`.
 - 🎯 **Raycasting em C#:** `Physics.Raycast(ray, out hitInfo, maxDistance)` acessível diretamente nos scripts.
 - 🕹️ **Manipulação Dinâmica:** Métodos de física (`AddForce`, `AddImpulse`, controle de velocidade linear/angular).
-- 🎬 **Animator State Machine (Estilo Mecanim):**
-  - **Parâmetros de Animação:** `SetFloat`, `SetBool`, `SetTrigger` e `SetInt` para controle via script.
-  - **Transições com Cross-Fade:** Interpolação suave e mesclagem de poses (blending) entre animações sem cortes secos.
-  - **Janela de Grafo de Animações no Editor:** Editor visual de estados e setas de transição com nós gráficos.
 
 ---
 
-### 🔊 **v0.5.60: Sistema de Áudio 3D Espacial**
+### 🎬 **v0.5.60: Animator Controller & Sistema Avançado de Animações**
+- 🧠 **Máquina de Estados de Animação (Estilo Mecanim):**
+  - **Parâmetros de Animação:** `SetFloat`, `SetBool`, `SetTrigger` e `SetInt` para controle direto via script.
+  - **Transições com Cross-Fade:** Mesclagem suave de poses (*pose blending*) entre animações sem cortes secos (ex: transição suave de 0.2s de *Idle* para *Run*).
+  - **Layers de Animação & Masking:** Suporte a camadas (ex: tocar animação de *Recarregar* apenas na parte superior do corpo enquanto o personagem corre).
+- 🎛️ **Janela de Grafo de Animações no Editor (`Animator Window`):**
+  - Editor visual baseado em nós com criação de estados, conexões e setas de transição interativas no ImGui.
+- 🔔 **Animation Events:**
+  - Disparo de eventos e métodos C# em frames específicos da animação (ex: passo no chão toca som; golpe no ar causa dano).
+
+---
+
+### 🔊 **v0.5.70: Sistema de Áudio 3D Espacial**
 - 🎧 **Componentes de Som:** `AudioSourceComponent` e `AudioListenerComponent`.
 - 🎵 **Formatos Suportados:** Decodificação e reprodução de `.wav`, `.ogg` e `.mp3`.
 - 🌐 **Atenuação Espacial:** Atenuação de volume por distância 3D (*Spatial Blend* 2D/3D, curvas de atenuação).
