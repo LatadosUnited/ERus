@@ -74,7 +74,12 @@ public class HttpServer
         
         try
         {
-            if (request.HttpMethod == "POST" && request.Url?.AbsolutePath == "/api/login")
+            if (request.HttpMethod == "GET" && (request.Url?.AbsolutePath == "/api/health" || request.Url?.AbsolutePath == "/api/ping"))
+            {
+                response.StatusCode = 200;
+                await SendJsonResponse(response, new { status = "online", timestamp = DateTime.UtcNow });
+            }
+            else if (request.HttpMethod == "POST" && request.Url?.AbsolutePath == "/api/login")
             {
                 await HandleLoginAsync(request, response);
             }

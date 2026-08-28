@@ -190,4 +190,25 @@ public class RemoteServerClient
             return (false, $"Network Error: {ex.Message}");
         }
     }
+
+    public async Task<(bool Online, long PingMs, string Error)> PingServerAsync(SavedServer server)
+    {
+        try
+        {
+            using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(3));
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var response = await _httpClient.GetAsync($"http://{server.Ip}:8080/api/health", cts.Token);
+            sw.Stop();
+
+            if (response.IsSuccessStatusCode)
+            {
+                return (true, sw.ElapsedMilliseconds, "");
+            }
+            return (false, sw.ElapsedMilliseconds, $"HTTP {(int)response.StatusCode}");
+        }
+        catch (Exception ex)
+        {
+            return (false, -1, ex.Message);
+        }
+    }
 }

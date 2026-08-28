@@ -10,6 +10,14 @@ using ERus.Hub.UI.Modals;
 
 namespace ERus.Hub.UI.Tabs;
 
+public class ServerPingInfo
+{
+    public bool IsOnline { get; set; }
+    public long PingMs { get; set; }
+    public bool IsChecking { get; set; }
+    public DateTime LastChecked { get; set; } = DateTime.MinValue;
+}
+
 public class ProjectsTab
 {
     private HubConfig _config;
@@ -21,6 +29,10 @@ public class ProjectsTab
     private List<RemoteProject> _remoteProjects = new List<RemoteProject>();
     private bool _isFetchingProjects = false;
     
+    // Server Ping Cache
+    private Dictionary<string, ServerPingInfo> _serverPings = new();
+    private DateTime _lastPingAllTime = DateTime.MinValue;
+
     // Modals
     private AddServerModal _addServerModal;
     private CreateProjectModal _createProjectModal;
@@ -40,6 +52,7 @@ public class ProjectsTab
             _activeServer = server;
             _showingLocalProjects = false;
             FetchProjectsForActiveServer();
+            PingServer(server);
         });
 
         _createProjectModal = new CreateProjectModal(_config, _apiClient, FetchProjectsForActiveServer);
@@ -48,10 +61,45 @@ public class ProjectsTab
         {
             if (_activeServer != null) FetchProjectsForActiveServer();
         });
+
+        CheckAllServerPings();
+    }
+
+    public void CheckAllServerPings()
+    {
+        _lastPingAllTime = DateTime.Now;
+        foreach (var srv in _config.Servers)
+        {
+            PingServer(srv);
+        }
+    }
+
+    private void PingServer(SavedServer server)
+    {
+        string key = $"{server.Ip}_{server.Username}";
+        if (!_serverPings.ContainsKey(key))
+            _serverPings[key] = new ServerPingInfo { IsChecking = true };
+
+        var info = _serverPings[key];
+        info.IsChecking = true;
+
+        Task.Run(async () =>
+        {
+            var (online, pingMs, _) = await _apiClient.PingServerAsync(server);
+            info.IsOnline = online;
+            info.PingMs = pingMs;
+            info.IsChecking = false;
+            info.LastChecked = DateTime.Now;
+        });
     }
 
     public void Draw()
     {
+        if ((DateTime.Now - _lastPingAllTime).TotalSeconds > 15)
+        {
+            CheckAllServerPings();
+        }
+
         ImGui.Columns(2, "ProjColumns", true);
         ImGui.SetColumnWidth(0, 250f);
 
@@ -86,7 +134,30 @@ public class ProjectsTab
             foreach (var srv in _config.Servers.ToArray())
             {
                 bool isSelected = (!_showingLocalProjects && _activeServer == srv);
-                if (ImGui.Selectable($"{srv.Alias}\n({srv.Ip})", isSelected, ImGuiSelectableFlags.None, new Vector2(0, 40)))
+                string key = $"{srv.Ip}_{srv.Username}";
+                
+                string statusTag = "○";
+                Vector4 statusColor = new Vector4(0.5f, 0.5f, 0.5f, 1.0f);
+                if (_serverPings.TryGetValue(key, out var pingInfo))
+                {
+                    if (pingInfo.IsChecking)
+                    {
+                        statusTag = "◌";
+                        statusColor = new Vector4(1.0f, 0.8f, 0.2f, 1.0f);
+                    }
+                    else if (pingInfo.IsOnline)
+                    {
+                        statusTag = $"● {pingInfo.PingMs}ms";
+                        statusColor = new Vector4(0.2f, 1.0f, 0.4f, 1.0f);
+                    }
+                    else
+                    {
+                        statusTag = "● Offline";
+                        statusColor = new Vector4(1.0f, 0.3f, 0.3f, 1.0f);
+                    }
+                }
+
+                if (ImGui.Selectable($"{srv.Alias} [{statusTag}]\n({srv.Ip})", isSelected, ImGuiSelectableFlags.None, new Vector2(0, 40)))
                 {
                     _showingLocalProjects = false;
                     _activeServer = srv;
@@ -95,6 +166,11 @@ public class ProjectsTab
                 
                 if (ImGui.BeginPopupContextItem($"Menu_{srv.Ip}_{srv.Username}"))
                 {
+                    if (ImGui.Selectable("Ping Server"))
+                    {
+                        PingServer(srv);
+                    }
+                    ImGui.Separator();
                     if (ImGui.Selectable("Remove Server"))
                     {
                         if (_activeServer == srv) 
@@ -103,6 +179,7 @@ public class ProjectsTab
                             _showingLocalProjects = true;
                         }
                         _config.Servers.Remove(srv);
+                        _serverPings.Remove(key);
                         _ = ConfigManager.SaveAsync(_config);
                     }
                     ImGui.EndPopup();
