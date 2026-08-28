@@ -13,18 +13,20 @@ timeline
         v0.5.21 (Atual) : Co-edição ao vivo : Hub Remote Sharing : Server Health Monitor
         v0.5.30 : Materiais, Texturas & Sprites 2D : Drag & Drop de Imagens : PBR Básico : Asset GUID
         v0.5.40 : Canvas 2D & UI de Gameplay : UIImage, UIText, UIButton : Âncoras
-        v0.5.50 : Iluminação & Ambiente : Luzes, Neblina 3D, Partículas
-        v0.5.55 : Prefabs & Componentes de Gameplay : CharacterController, Billboard, CameraFollow
+        v0.5.50 : Iluminação, Sombras & Ambiente : Luzes, Shadow Mapping, Neblina 3D, Partículas
+        v0.5.55 : Prefabs, Scene Management & Componentes : CharacterController, LoadScene, Billboard
         v0.5.60 : Gameplay & Físicas em C# : OnCollision / OnTrigger : Raycasting C#
+        v0.5.65 : NavMesh & Pathfinding de IA : NavAgent, Obstacle Avoidance : Navegação Automática
         v0.5.70 : Animator Controller & Animações : State Machine & Cross-Fade : Grafo Visual
         v0.5.80 : Áudio 3D Espacial : AudioSource & Listener : Efeitos e Música
         v0.5.90 : Documentação Integrada & API Reference : Janela Help no Editor : Templates C#
-        v0.6.00 : AI-Native Engine : Servidor MCP Integrado : Automação por IA
-        v0.6.10 : Resiliência de Rede : Host Migration : Fallback de Sessão
-        v0.6.50 : Project Settings & Editor Preferences : Player, Física, Gráficos : Tags & Layers : Auto-Save
+        v0.6.00 : Resiliência de Rede : Host Migration : Fallback de Sessão
+        v0.6.50 : Project Settings, Undo/Redo & Preferences : Player, Física, Gráficos : Ctrl+Z/Y
         v0.7.00 : Standalone Game Builder : Templates de Projetos no Hub : Exportador .exe
         v0.8.00 : Profiler de Performance & Diagnósticos : Draw Calls & GC : Frustum Culling
+        v0.8.50 : Post-Processing & Efeitos Visuais : Bloom, SSAO, Color Grading : Vignette
         v0.9.00 : Asset Bundling (.pak) & Multiplataforma : Criptografia de Assets : Windows & Linux
+        v0.9.50 : AI-Native Engine : Servidor MCP Integrado : Automação por IA
         v1.0.00 : Gold Release Oficial : Produção Comercial Completa
 ```
 
@@ -36,7 +38,7 @@ timeline
 - ✅ **Rede 2.0 & Co-Criação:** Sincronização de arrasto de gizmo em tempo real, presença de desenvolvedores, bounding boxes coloridas e team chat integrado.
 - ✅ **Hub Remote Sharing:** Publicação de projetos locais no servidor remoto e convite imediato de membros da equipe.
 - ✅ **Server Health Monitor:** Medição assíncrona de Ping e indicadores visuais de status dos servidores remotos.
-- ⚠️ **Risco conhecido:** topologia P2P ainda sem host migration — endereçado explicitamente em **v0.6.10**.
+- ⚠️ **Risco conhecido:** topologia P2P ainda sem host migration — endereçado explicitamente em **v0.6.00**.
 
 ---
 
@@ -60,10 +62,13 @@ timeline
 
 ---
 
-### 💡 **v0.5.50: Iluminação & Ambiente**
-*(escopo reduzido — separado do antigo v0.5.50 para caber em um ciclo de release realista; prefabs e componentes de gameplay foram para v0.5.55)*
+### 💡 **v0.5.50: Iluminação, Sombras & Ambiente**
 - 💡 **Sistema de Iluminação 3D:**
   - `LightComponent` com suporte a **Directional Light** (Sol), **Point Light** (Lâmpada/Tocha) e **Spot Light** (Lanterna) com cor, intensidade e atenuação de raio.
+- 🌑 **Shadow Mapping:**
+  - Sombras em tempo real para a **Directional Light** (cascaded shadow maps ou shadow map básico).
+  - Sombras opcionais para **Point Lights** e **Spot Lights** (depth cubemap).
+  - Configuração de resolução, bias e distância máxima de sombras no Inspector.
 - 🌫️ **Ambiente, Neblina & Efeitos:**
   - `SkyboxComponent` / `EnvironmentComponent` (fundo com gradiente ou cubemap 360°).
   - `FogComponent` / **Neblina Atmosférica 3D** (Distance Fog linear e exponencial com cor e densidade ajustáveis para profundidade de cena).
@@ -75,11 +80,15 @@ timeline
 
 ---
 
-### 🧱 **v0.5.55: Prefabs & Componentes de Gameplay**
+### 🧱 **v0.5.55: Prefabs, Scene Management & Componentes de Gameplay**
 - 🧱 **Sistema de Prefabs Reutilizáveis (`.prefab`):**
   - Salvar qualquer entidade com seus filhos e componentes configurados como um arquivo `.prefab` no navegador de arquivos.
   - Arrastar prefabs do navegador direto para a cena ou instanciar via script C# (`Instantiate("Player.prefab", position)`).
   - Usa o esquema de Asset GUID definido em v0.5.30 como referência estável do prefab.
+- 🗺️ **Scene Management (Gerenciamento de Cenas):**
+  - `SceneManager.LoadScene("Level2")` — carregamento síncrono de cenas (troca de fase imediata).
+  - `SceneManager.LoadSceneAsync("Level2")` — carregamento assíncrono com callback de progresso para telas de loading.
+  - **Cenas Aditivas:** carregar múltiplas cenas simultaneamente (ex: mundo 3D + HUD de UI sobrepostos como cenas separadas).
 - 🏃‍♂️ **Novos Componentes de Gameplay:**
   - `CharacterControllerComponent` (controlador de movimentação com detecção suave de degraus, inclinação e solo sem deslize físico indesejado).
   - `BillboardComponent` (sprites/ícones 2D que sempre se alinham de frente para a câmera).
@@ -94,6 +103,19 @@ timeline
 - 🎯 **Raycasting em C#:** `Physics.Raycast(ray, out hitInfo, maxDistance)` acessível diretamente nos scripts.
 - 🕹️ **Manipulação Dinâmica:** Métodos de física (`AddForce`, `AddImpulse`, controle de velocidade linear/angular).
 - 🌐 **Estratégia de Rede:** simulação física roda em todos os peers (determinística) ou só no host/autoridade, com correção de estado nos clientes?
+
+---
+
+### 🧭 **v0.5.65: NavMesh & Pathfinding de IA**
+- 🗺️ **Geração de NavMesh:**
+  - Bake automático de malha de navegação a partir da geometria estática da cena (chão, paredes, rampas).
+  - Configuração de tamanho do agente (*Agent Radius*, *Agent Height*), inclinação máxima (*Max Slope*) e altura de degrau (*Step Height*).
+- 🤖 **`NavAgentComponent`:**
+  - `navAgent.SetDestination(targetPosition)` — o NPC calcula automaticamente o caminho mais curto e navega desviando de obstáculos.
+  - Velocidade, aceleração e raio de parada configuráveis no Inspector.
+- 🚧 **`NavObstacleComponent`:**
+  - Obstáculos dinâmicos que bloqueiam o caminho dos agentes em runtime (ex: barricadas, portas fechadas).
+- 🌐 **Estratégia de Rede:** navegação roda apenas no host/autoridade e replica posição final, ou cada cliente calcula localmente?
 
 ---
 
@@ -130,28 +152,24 @@ timeline
 
 ---
 
-### 🤖 **v0.6.00: AI-Native Engine & Servidor MCP**
-- 🧠 **Servidor MCP Integrado:** Protocolo Model Context Protocol nativo (HTTP/SSE + Stdio Bridge).
-- 🛠️ **Ferramentas de IA:** Inspeção de cenas, criação de entidades, ajuste de materiais, Play Mode e diagnóstico de logs do console.
-- 🛡️ **Segurança & Estabilidade:** Session Token contra *DNS Rebinding*, Time-Budgeting de 4ms (anti-freeze) e respeito ao *Temporal Locking*.
-
----
-
-### 🌐 **v0.6.10: Resiliência de Rede — Host Migration & Fallback**
-*(novo marco — endereça explicitamente o risco de topologia P2P sem migração de host, já anotado desde v0.5.21)*
+### 🌐 **v0.6.00: Resiliência de Rede — Host Migration & Fallback**
+*(endereça explicitamente o risco de topologia P2P sem migração de host, já anotado desde v0.5.21)*
 - 🔁 **Host Migration:** eleição de novo host quando o atual desconecta, sem derrubar a sessão colaborativa.
 - 💾 **Fallback de Sessão:** reconexão automática de clientes e reconciliação de estado (Temporal Locking) após a migração.
 - 🧪 **Cenário de Teste:** queda simulada do host durante edição concorrente para validar reconciliação sem perda de dados.
 
 ---
 
-### ⚙️ **v0.6.50: Project Settings & Editor Preferences**
+### ⚙️ **v0.6.50: Project Settings, Undo/Redo & Editor Preferences**
 - 🎮 **Janela `Edit -> Project Settings...` (`ProjectSettings.json` salvo no projeto):**
   - **Player:** Nome do Jogo, Versão (`1.0.0`), Nome da Empresa, Ícone do Jogo e **Cena Inicial Padrão (`Startup Scene`)**.
   - **Physics:** Gravidade global (X, Y, Z), *Fixed Timestep* configurável (50Hz / 60Hz / custom) e atrito padrão.
   - **Graphics:** VSync (On/Off), Limite de Taxa de Quadros (Max FPS), Anti-Aliasing (MSAA) e Cor de Fundo Padrão.
   - **Network:** Tick rate de replicação padrão (30Hz), timeout de desconexão e porta padrão do servidor.
   - **Tags & Layers:** Gerenciador visual de Tags personalizadas e Matriz de Colisão entre Layers.
+- ↩️ **Sistema de Undo/Redo (`Ctrl+Z` / `Ctrl+Y`):**
+  - Pilha de operações reversíveis (mover entidade, alterar componente, deletar objeto, alterar propriedade).
+  - Integrado com o Temporal Locking para desfazer operações em sessões colaborativas.
 - 🛠️ **Janela `Edit -> Preferences...` (`EditorPrefs.json` salvo em AppData):**
   - **Scene View Camera:** Velocidade da câmera de voo (*Camera Speed*), sensibilidade do mouse e inversão de eixo.
   - **IDE Externa:** Escolha do editor de código padrão (VS Code, Visual Studio 2022, Rider) ao abrir scripts C#.
@@ -177,12 +195,28 @@ timeline
 
 ---
 
+### ✨ **v0.8.50: Post-Processing & Efeitos Visuais Cinematográficos**
+- 🌟 **Bloom:** Brilho suave em áreas muito claras da cena (luzes, materiais emissivos, reflexos).
+- 🌑 **SSAO (Screen Space Ambient Occlusion):** Sombras ambientais sutis em cantos e frestas, adicionando profundidade visual.
+- 🎨 **Color Grading & Tone Mapping:** Ajuste de temperatura de cor, saturação e contraste cinematográfico por cena.
+- 🔲 **Vignette:** Escurecimento sutil nos cantos da tela para direcionar o olhar do jogador ao centro.
+- 📐 **Anti-Aliasing Avançado (FXAA/TAA):** Suavização de bordas serrilhadas em tempo real.
+
+---
+
 ### 📦 **v0.9.00: Asset Bundling (`.pak`), Criptografia & Multiplataforma**
 - 🔒 **Empacotamento de Assets (`.pak` / `.data`):**
   - Compactação e criptografia de texturas, modelos 3D, sons e cenas em um pacote protegido, impedindo extração não autorizada de assets do jogo final.
   - Reaproveita o esquema de Asset GUID definido em v0.5.30 como chave de empacotamento, evitando migração de referências nesta etapa.
 - 🐧 **Suporte Multiplataforma:**
   - Exportação e compilação nativa para **Windows (x64)** e **Linux (x64 / Steam Deck)**.
+
+---
+
+### 🤖 **v0.9.50: AI-Native Engine & Servidor MCP**
+- 🧠 **Servidor MCP Integrado:** Protocolo Model Context Protocol nativo (HTTP/SSE + Stdio Bridge).
+- 🛠️ **Ferramentas de IA:** Inspeção de cenas, criação de entidades, ajuste de materiais, Play Mode e diagnóstico de logs do console.
+- 🛡️ **Segurança & Estabilidade:** Session Token contra *DNS Rebinding*, Time-Budgeting de 4ms (anti-freeze) e respeito ao *Temporal Locking*.
 
 ---
 
