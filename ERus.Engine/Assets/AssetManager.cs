@@ -20,6 +20,19 @@ public class AssetManager
     
     private Dictionary<string, int> _modelRefCounts = new();
     private Dictionary<string, int> _textureRefCounts = new();
+    private Texture? _whiteTexture;
+
+    public Texture WhiteTexture
+    {
+        get
+        {
+            if (_whiteTexture == null)
+            {
+                _whiteTexture = CreateWhiteTexture();
+            }
+            return _whiteTexture;
+        }
+    }
 
     public static void Initialize(GL gl)
     {
@@ -40,6 +53,72 @@ public class AssetManager
     {
         _gl = gl;
         _assimp = Silk.NET.Assimp.Assimp.GetApi();
+    }
+
+    private unsafe Texture CreateWhiteTexture()
+    {
+        uint texId = _gl.GenTexture();
+        _gl.BindTexture(TextureTarget.Texture2D, texId);
+        byte[] whitePixel = new byte[] { 255, 255, 255, 255 };
+        fixed (byte* ptr = whitePixel)
+        {
+            _gl.TexImage2D(TextureTarget.Texture2D, 0, InternalFormat.Rgba, 1, 1, 0, PixelFormat.Rgba, PixelType.UnsignedByte, ptr);
+        }
+        _gl.TexParameterI(TextureTarget.Texture2D, TextureParameterName.TextureWrapS, (int)Silk.NET.OpenGL.TextureWrapMode.Repeat);
+        _gl.TexParameterI(TextureTarget.Texture2D, TextureParameterName.TextureWrapT, (int)Silk.NET.OpenGL.TextureWrapMode.Repeat);
+        _gl.TexParameterI(TextureTarget.Texture2D, TextureParameterName.TextureMinFilter, (int)TextureMinFilter.Linear);
+        _gl.TexParameterI(TextureTarget.Texture2D, TextureParameterName.TextureMagFilter, (int)TextureMagFilter.Linear);
+        _gl.BindTexture(TextureTarget.Texture2D, 0);
+
+        return new Texture(_gl, texId, "texture_diffuse", "white_default");
+    }
+
+    public Texture? LoadTexture(string path, string typeName = "texture_diffuse")
+    {
+        if (string.IsNullOrEmpty(path)) return null;
+        string fullPath = Path.GetFullPath(path);
+
+        if (_textures.TryGetValue(fullPath, out var cachedTex))
+        {
+            _textureRefCounts[fullPath]++;
+            return cachedTex;
+        }
+
+        Texture? tex = LoadTextureFromFile(fullPath, typeName);
+        if (tex != null)
+        {
+            _textures[fullPath] = tex;
+            _textureRefCounts[fullPath] = 1;
+        }
+        return tex;
+    }
+
+    public Texture? LoadTextureByGuid(Guid guid, string typeName = "texture_diffuse")
+    {
+        if (guid == Guid.Empty) return null;
+        string? path = Core.Engine.Instance?.AssetDatabase.GetPathByGuid(guid);
+        if (string.IsNullOrEmpty(path)) return null;
+        return LoadTexture(path, typeName);
+    }
+
+    public void UnloadTexture(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return;
+        string fullPath = Path.GetFullPath(path);
+
+        if (_textureRefCounts.ContainsKey(fullPath))
+        {
+            _textureRefCounts[fullPath]--;
+            if (_textureRefCounts[fullPath] <= 0)
+            {
+                if (_textures.TryGetValue(fullPath, out var tex))
+                {
+                    tex.Dispose();
+                    _textures.Remove(fullPath);
+                }
+                _textureRefCounts.Remove(fullPath);
+            }
+        }
     }
 
     public Model? LoadModel(string path)

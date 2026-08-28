@@ -102,7 +102,13 @@ public static class SceneSerializer
     private static readonly JsonSerializerOptions _jsonOptions = new()
     {
         WriteIndented = true,
-        Converters = { new Vector3DFloatConverter() }
+        IncludeFields = true,
+        Converters = { 
+            new Vector3DFloatConverter(),
+            new Vector2Converter(),
+            new Vector3Converter(),
+            new Vector4Converter()
+        }
     };
 
     // Cache dos membros serializáveis por tipo de componente (excluindo [NonSerializedComponent])
@@ -653,6 +659,114 @@ public class Vector3DFloatConverter : JsonConverter<Vector3D<float>>
         writer.WriteNumber("X", value.X);
         writer.WriteNumber("Y", value.Y);
         writer.WriteNumber("Z", value.Z);
+        writer.WriteEndObject();
+    }
+}
+
+public class Vector2Converter : JsonConverter<System.Numerics.Vector2>
+{
+    public override System.Numerics.Vector2 Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.StartObject)
+        {
+            float x = 0, y = 0;
+            while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+            {
+                if (reader.TokenType == JsonTokenType.PropertyName)
+                {
+                    string prop = reader.GetString()!;
+                    reader.Read();
+                    switch (prop)
+                    {
+                        case "X": case "x": x = reader.GetSingle(); break;
+                        case "Y": case "y": y = reader.GetSingle(); break;
+                    }
+                }
+            }
+            return new System.Numerics.Vector2(x, y);
+        }
+        throw new JsonException("Expected StartObject for Vector2");
+    }
+
+    public override void Write(Utf8JsonWriter writer, System.Numerics.Vector2 value, JsonSerializerOptions options)
+    {
+        writer.WriteStartObject();
+        writer.WriteNumber("X", value.X);
+        writer.WriteNumber("Y", value.Y);
+        writer.WriteEndObject();
+    }
+}
+
+public class Vector3Converter : JsonConverter<System.Numerics.Vector3>
+{
+    public override System.Numerics.Vector3 Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.StartObject)
+        {
+            float x = 0, y = 0, z = 0;
+            while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+            {
+                if (reader.TokenType == JsonTokenType.PropertyName)
+                {
+                    string prop = reader.GetString()!;
+                    reader.Read();
+                    switch (prop)
+                    {
+                        case "X": case "x": x = reader.GetSingle(); break;
+                        case "Y": case "y": y = reader.GetSingle(); break;
+                        case "Z": case "z": z = reader.GetSingle(); break;
+                    }
+                }
+            }
+            return new System.Numerics.Vector3(x, y, z);
+        }
+        throw new JsonException("Expected StartObject for Vector3");
+    }
+
+    public override void Write(Utf8JsonWriter writer, System.Numerics.Vector3 value, JsonSerializerOptions options)
+    {
+        writer.WriteStartObject();
+        writer.WriteNumber("X", value.X);
+        writer.WriteNumber("Y", value.Y);
+        writer.WriteNumber("Z", value.Z);
+        writer.WriteEndObject();
+    }
+}
+
+public class Vector4Converter : JsonConverter<System.Numerics.Vector4>
+{
+    public override System.Numerics.Vector4 Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.StartObject)
+        {
+            float x = 0, y = 0, z = 0, w = 0;
+            while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+            {
+                if (reader.TokenType == JsonTokenType.PropertyName)
+                {
+                    string prop = reader.GetString()!;
+                    reader.Read();
+                    switch (prop)
+                    {
+                        case "X": case "x": x = reader.GetSingle(); break;
+                        case "Y": case "y": y = reader.GetSingle(); break;
+                        case "Z": case "z": z = reader.GetSingle(); break;
+                        case "W": case "w": w = reader.GetSingle(); break;
+                    }
+                }
+            }
+            return new System.Numerics.Vector4(x, y, z, w);
+        }
+        throw new JsonException("Expected StartObject for Vector4");
+    }
+
+    public override void Write(Utf8JsonWriter writer, System.Numerics.Vector4 value, JsonSerializerOptions options)
+    {
+        writer.WriteStartObject();
+        writer.WriteNumber("X", value.X);
+        writer.WriteNumber("Y", value.Y);
+        writer.WriteNumber("Z", value.Z);
+        writer.WriteNumber("W", value.W);
         writer.WriteEndObject();
     }
 }

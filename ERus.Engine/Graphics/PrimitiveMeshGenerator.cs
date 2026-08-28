@@ -6,6 +6,7 @@ namespace ERus.Engine.Graphics;
 
 public class MeshData
 {
+    // Formato por vértice: PosX, PosY, PosZ, NormX, NormY, NormZ, TexU, TexV (8 floats)
     public float[] Vertices { get; set; } = Array.Empty<float>();
     public uint[] Indices { get; set; } = Array.Empty<uint>();
     public float BoundingRadius { get; set; } = 0f;
@@ -13,15 +14,15 @@ public class MeshData
     public void CalculateBoundingRadius()
     {
         float maxSq = 0f;
-        for (int i = 0; i < Vertices.Length; i += 6)
+        for (int i = 0; i < Vertices.Length; i += 8)
         {
             float x = Vertices[i];
-            float y = Vertices[i+1];
-            float z = Vertices[i+2];
-            float sq = x*x + y*y + z*z;
+            float y = Vertices[i + 1];
+            float z = Vertices[i + 2];
+            float sq = x * x + y * y + z * z;
             if (sq > maxSq) maxSq = sq;
         }
-        BoundingRadius = System.MathF.Sqrt(maxSq);
+        BoundingRadius = MathF.Sqrt(maxSq);
     }
 }
 
@@ -33,75 +34,96 @@ public static class PrimitiveMeshGenerator
     public const int CapsuleSegments = 32;
     public const int CapsuleRings = 16;
 
-    public static readonly Vector3 DefaultMaterialColor = new Vector3(0.82f, 0.82f, 0.82f);
-
     public static MeshData GenerateCube()
     {
-        // 8 vertices, 36 indices
+        // 24 vértices (4 por face para normais e UVs independentes)
         var verts = new List<float>();
-        Vector3[] positions = {
-            new Vector3(-0.5f, -0.5f, -0.5f), new Vector3( 0.5f, -0.5f, -0.5f),
-            new Vector3( 0.5f,  0.5f, -0.5f), new Vector3(-0.5f,  0.5f, -0.5f),
-            new Vector3(-0.5f, -0.5f,  0.5f), new Vector3( 0.5f, -0.5f,  0.5f),
-            new Vector3( 0.5f,  0.5f,  0.5f), new Vector3(-0.5f,  0.5f,  0.5f)
-        };
-        for (int i = 0; i < 8; i++) {
-            verts.Add(positions[i].X); verts.Add(positions[i].Y); verts.Add(positions[i].Z);
-            verts.Add(DefaultMaterialColor.X); verts.Add(DefaultMaterialColor.Y); verts.Add(DefaultMaterialColor.Z);
+        var indices = new List<uint>();
+
+        void AddFace(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3, Vector3 normal)
+        {
+            uint baseIdx = (uint)(verts.Count / 8);
+
+            // Vértice 0 (Bottom-Left)
+            verts.Add(p0.X); verts.Add(p0.Y); verts.Add(p0.Z);
+            verts.Add(normal.X); verts.Add(normal.Y); verts.Add(normal.Z);
+            verts.Add(0f); verts.Add(0f);
+
+            // Vértice 1 (Bottom-Right)
+            verts.Add(p1.X); verts.Add(p1.Y); verts.Add(p1.Z);
+            verts.Add(normal.X); verts.Add(normal.Y); verts.Add(normal.Z);
+            verts.Add(1f); verts.Add(0f);
+
+            // Vértice 2 (Top-Right)
+            verts.Add(p2.X); verts.Add(p2.Y); verts.Add(p2.Z);
+            verts.Add(normal.X); verts.Add(normal.Y); verts.Add(normal.Z);
+            verts.Add(1f); verts.Add(1f);
+
+            // Vértice 3 (Top-Left)
+            verts.Add(p3.X); verts.Add(p3.Y); verts.Add(p3.Z);
+            verts.Add(normal.X); verts.Add(normal.Y); verts.Add(normal.Z);
+            verts.Add(0f); verts.Add(1f);
+
+            indices.Add(baseIdx);
+            indices.Add(baseIdx + 1);
+            indices.Add(baseIdx + 2);
+            indices.Add(baseIdx + 2);
+            indices.Add(baseIdx + 3);
+            indices.Add(baseIdx);
         }
 
-        uint[] indices = {
-            // Front
-            0, 1, 2, 2, 3, 0,
-            // Right
-            1, 5, 6, 6, 2, 1,
-            // Back
-            5, 4, 7, 7, 6, 5,
-            // Left
-            4, 0, 3, 3, 7, 4,
-            // Top
-            3, 2, 6, 6, 7, 3,
-            // Bottom
-            4, 5, 1, 1, 0, 4
-        };
+        // Front (+Z)
+        AddFace(new Vector3(-0.5f, -0.5f, 0.5f), new Vector3(0.5f, -0.5f, 0.5f), new Vector3(0.5f, 0.5f, 0.5f), new Vector3(-0.5f, 0.5f, 0.5f), Vector3.UnitZ);
+        // Back (-Z)
+        AddFace(new Vector3(0.5f, -0.5f, -0.5f), new Vector3(-0.5f, -0.5f, -0.5f), new Vector3(-0.5f, 0.5f, -0.5f), new Vector3(0.5f, 0.5f, -0.5f), -Vector3.UnitZ);
+        // Top (+Y)
+        AddFace(new Vector3(-0.5f, 0.5f, 0.5f), new Vector3(0.5f, 0.5f, 0.5f), new Vector3(0.5f, 0.5f, -0.5f), new Vector3(-0.5f, 0.5f, -0.5f), Vector3.UnitY);
+        // Bottom (-Y)
+        AddFace(new Vector3(-0.5f, -0.5f, -0.5f), new Vector3(0.5f, -0.5f, -0.5f), new Vector3(0.5f, -0.5f, 0.5f), new Vector3(-0.5f, -0.5f, 0.5f), -Vector3.UnitY);
+        // Right (+X)
+        AddFace(new Vector3(0.5f, -0.5f, 0.5f), new Vector3(0.5f, -0.5f, -0.5f), new Vector3(0.5f, 0.5f, -0.5f), new Vector3(0.5f, 0.5f, 0.5f), Vector3.UnitX);
+        // Left (-X)
+        AddFace(new Vector3(-0.5f, -0.5f, -0.5f), new Vector3(-0.5f, -0.5f, 0.5f), new Vector3(-0.5f, 0.5f, 0.5f), new Vector3(-0.5f, 0.5f, -0.5f), -Vector3.UnitX);
 
-        var mesh = new MeshData { Vertices = verts.ToArray(), Indices = indices };
+        var mesh = new MeshData { Vertices = verts.ToArray(), Indices = indices.ToArray() };
         mesh.CalculateBoundingRadius();
         return mesh;
     }
 
     public static MeshData GeneratePlane()
     {
-        var verts = new List<float>();
-        // Plane is on XZ axis, Y=0
-        Vector3[] pos = {
-            new Vector3(-0.5f, 0, -0.5f), new Vector3( 0.5f, 0, -0.5f),
-            new Vector3( 0.5f, 0,  0.5f), new Vector3(-0.5f, 0,  0.5f)
+        // Plane no plano XZ, Y=0, apontando para cima (+Y)
+        float[] verts = new float[]
+        {
+            // Pos                   // Normal           // UV
+            -0.5f, 0.0f,  0.5f,     0.0f, 1.0f, 0.0f,   0.0f, 0.0f,
+             0.5f, 0.0f,  0.5f,     0.0f, 1.0f, 0.0f,   1.0f, 0.0f,
+             0.5f, 0.0f, -0.5f,     0.0f, 1.0f, 0.0f,   1.0f, 1.0f,
+            -0.5f, 0.0f, -0.5f,     0.0f, 1.0f, 0.0f,   0.0f, 1.0f
         };
-        for (int i = 0; i < 4; i++) {
-            verts.Add(pos[i].X); verts.Add(pos[i].Y); verts.Add(pos[i].Z);
-            verts.Add(DefaultMaterialColor.X); verts.Add(DefaultMaterialColor.Y); verts.Add(DefaultMaterialColor.Z);
-        }
-        uint[] indices = { 0, 3, 2, 2, 1, 0 }; // Top face
-        var mesh = new MeshData { Vertices = verts.ToArray(), Indices = indices };
+
+        uint[] indices = new uint[] { 0, 1, 2, 2, 3, 0 };
+
+        var mesh = new MeshData { Vertices = verts, Indices = indices };
         mesh.CalculateBoundingRadius();
         return mesh;
     }
 
     public static MeshData GenerateQuad()
     {
-        var verts = new List<float>();
-        // Quad is on XY axis, Z=0 (facing forward)
-        Vector3[] pos = {
-            new Vector3(-0.5f, -0.5f, 0), new Vector3( 0.5f, -0.5f, 0),
-            new Vector3( 0.5f,  0.5f, 0), new Vector3(-0.5f,  0.5f, 0)
+        // Quad no plano XY, Z=0, apontando para frente (+Z) - Perfeito para Sprites 2D e UI
+        float[] verts = new float[]
+        {
+            // Pos                   // Normal           // UV
+            -0.5f, -0.5f, 0.0f,     0.0f, 0.0f, 1.0f,   0.0f, 0.0f,
+             0.5f, -0.5f, 0.0f,     0.0f, 0.0f, 1.0f,   1.0f, 0.0f,
+             0.5f,  0.5f, 0.0f,     0.0f, 0.0f, 1.0f,   1.0f, 1.0f,
+            -0.5f,  0.5f, 0.0f,     0.0f, 0.0f, 1.0f,   0.0f, 1.0f
         };
-        for (int i = 0; i < 4; i++) {
-            verts.Add(pos[i].X); verts.Add(pos[i].Y); verts.Add(pos[i].Z);
-            verts.Add(DefaultMaterialColor.X); verts.Add(DefaultMaterialColor.Y); verts.Add(DefaultMaterialColor.Z);
-        }
-        uint[] indices = { 0, 1, 2, 2, 3, 0 };
-        var mesh = new MeshData { Vertices = verts.ToArray(), Indices = indices };
+
+        uint[] indices = new uint[] { 0, 1, 2, 2, 3, 0 };
+
+        var mesh = new MeshData { Vertices = verts, Indices = indices };
         mesh.CalculateBoundingRadius();
         return mesh;
     }
@@ -125,8 +147,11 @@ public static class PrimitiveMeshGenerator
                 float y = radius * MathF.Cos(phi);
                 float z = radius * MathF.Sin(phi) * MathF.Sin(theta);
 
+                Vector3 norm = Vector3.Normalize(new Vector3(x, y, z));
+
                 verts.Add(x); verts.Add(y); verts.Add(z);
-                verts.Add(DefaultMaterialColor.X); verts.Add(DefaultMaterialColor.Y); verts.Add(DefaultMaterialColor.Z);
+                verts.Add(norm.X); verts.Add(norm.Y); verts.Add(norm.Z);
+                verts.Add(u); verts.Add(1.0f - v);
             }
         }
 
@@ -159,29 +184,25 @@ public static class PrimitiveMeshGenerator
 
         float halfHeight = height / 2f;
 
-        // Vertices for sides
+        // Vértices da lateral
         for (int i = 0; i <= CylinderSegments; i++)
         {
-            float theta = ((float)i / CylinderSegments) * MathF.PI * 2f;
+            float u = (float)i / CylinderSegments;
+            float theta = u * MathF.PI * 2f;
             float x = radius * MathF.Cos(theta);
             float z = radius * MathF.Sin(theta);
+            Vector3 norm = Vector3.Normalize(new Vector3(x, 0, z));
 
-            // Bottom
+            // Bottom vertex
             verts.Add(x); verts.Add(-halfHeight); verts.Add(z);
-            verts.Add(DefaultMaterialColor.X); verts.Add(DefaultMaterialColor.Y); verts.Add(DefaultMaterialColor.Z);
-            
-            // Top
+            verts.Add(norm.X); verts.Add(norm.Y); verts.Add(norm.Z);
+            verts.Add(u); verts.Add(0f);
+
+            // Top vertex
             verts.Add(x); verts.Add(halfHeight); verts.Add(z);
-            verts.Add(DefaultMaterialColor.X); verts.Add(DefaultMaterialColor.Y); verts.Add(DefaultMaterialColor.Z);
+            verts.Add(norm.X); verts.Add(norm.Y); verts.Add(norm.Z);
+            verts.Add(u); verts.Add(1f);
         }
-
-        int topCenterIdx = verts.Count / 6;
-        verts.Add(0); verts.Add(halfHeight); verts.Add(0);
-        verts.Add(DefaultMaterialColor.X); verts.Add(DefaultMaterialColor.Y); verts.Add(DefaultMaterialColor.Z);
-
-        int bottomCenterIdx = verts.Count / 6;
-        verts.Add(0); verts.Add(-halfHeight); verts.Add(0);
-        verts.Add(DefaultMaterialColor.X); verts.Add(DefaultMaterialColor.Y); verts.Add(DefaultMaterialColor.Z);
 
         for (int i = 0; i < CylinderSegments; i++)
         {
@@ -190,15 +211,62 @@ public static class PrimitiveMeshGenerator
             uint b2 = (uint)(i * 2 + 2);
             uint t2 = (uint)(i * 2 + 3);
 
-            // Side
             indices.Add(b1); indices.Add(t1); indices.Add(b2);
             indices.Add(t1); indices.Add(t2); indices.Add(b2);
+        }
 
-            // Top Cap
-            indices.Add((uint)topCenterIdx); indices.Add(t2); indices.Add(t1);
-            
-            // Bottom Cap
-            indices.Add((uint)bottomCenterIdx); indices.Add(b1); indices.Add(b2);
+        // Top Cap
+        uint topCenterIdx = (uint)(verts.Count / 8);
+        verts.Add(0); verts.Add(halfHeight); verts.Add(0);
+        verts.Add(0); verts.Add(1); verts.Add(0);
+        verts.Add(0.5f); verts.Add(0.5f);
+
+        uint topRingStart = (uint)(verts.Count / 8);
+        for (int i = 0; i <= CylinderSegments; i++)
+        {
+            float u = (float)i / CylinderSegments;
+            float theta = u * MathF.PI * 2f;
+            float x = radius * MathF.Cos(theta);
+            float z = radius * MathF.Sin(theta);
+
+            verts.Add(x); verts.Add(halfHeight); verts.Add(z);
+            verts.Add(0); verts.Add(1); verts.Add(0);
+            verts.Add(0.5f + 0.5f * MathF.Cos(theta));
+            verts.Add(0.5f + 0.5f * MathF.Sin(theta));
+        }
+
+        for (int i = 0; i < CylinderSegments; i++)
+        {
+            indices.Add(topCenterIdx);
+            indices.Add((uint)(topRingStart + i + 1));
+            indices.Add((uint)(topRingStart + i));
+        }
+
+        // Bottom Cap
+        uint bottomCenterIdx = (uint)(verts.Count / 8);
+        verts.Add(0); verts.Add(-halfHeight); verts.Add(0);
+        verts.Add(0); verts.Add(-1); verts.Add(0);
+        verts.Add(0.5f); verts.Add(0.5f);
+
+        uint bottomRingStart = (uint)(verts.Count / 8);
+        for (int i = 0; i <= CylinderSegments; i++)
+        {
+            float u = (float)i / CylinderSegments;
+            float theta = u * MathF.PI * 2f;
+            float x = radius * MathF.Cos(theta);
+            float z = radius * MathF.Sin(theta);
+
+            verts.Add(x); verts.Add(-halfHeight); verts.Add(z);
+            verts.Add(0); verts.Add(-1); verts.Add(0);
+            verts.Add(0.5f + 0.5f * MathF.Cos(theta));
+            verts.Add(0.5f - 0.5f * MathF.Sin(theta));
+        }
+
+        for (int i = 0; i < CylinderSegments; i++)
+        {
+            indices.Add(bottomCenterIdx);
+            indices.Add((uint)(bottomRingStart + i));
+            indices.Add((uint)(bottomRingStart + i + 1));
         }
 
         var mesh = new MeshData { Vertices = verts.ToArray(), Indices = indices.ToArray() };
@@ -210,51 +278,57 @@ public static class PrimitiveMeshGenerator
     {
         var verts = new List<float>();
         var indices = new List<uint>();
-        
-        // Height is total height including hemispheres. 
-        // Cylinder part height = height - 2*radius
+
         float cylinderHeight = System.Math.Max(0, height - 2 * radius);
         float halfCylHeight = cylinderHeight / 2f;
-        
         int halfRings = CapsuleRings / 2;
 
         // Top hemisphere
         for (int r = 0; r <= halfRings; r++)
         {
-            float phi = ((float)r / halfRings) * (MathF.PI / 2f);
+            float v = (float)r / halfRings;
+            float phi = v * (MathF.PI / 2f);
             float yOffset = halfCylHeight;
-            
+
             for (int s = 0; s <= CapsuleSegments; s++)
             {
-                float theta = ((float)s / CapsuleSegments) * MathF.PI * 2f;
+                float u = (float)s / CapsuleSegments;
+                float theta = u * MathF.PI * 2f;
                 float x = radius * MathF.Sin(phi) * MathF.Cos(theta);
                 float y = radius * MathF.Cos(phi) + yOffset;
                 float z = radius * MathF.Sin(phi) * MathF.Sin(theta);
 
+                Vector3 norm = Vector3.Normalize(new Vector3(x, radius * MathF.Cos(phi), z));
+
                 verts.Add(x); verts.Add(y); verts.Add(z);
-                verts.Add(DefaultMaterialColor.X); verts.Add(DefaultMaterialColor.Y); verts.Add(DefaultMaterialColor.Z);
+                verts.Add(norm.X); verts.Add(norm.Y); verts.Add(norm.Z);
+                verts.Add(u); verts.Add(1.0f - (v * 0.5f));
             }
         }
 
         // Bottom hemisphere
         for (int r = halfRings; r <= CapsuleRings; r++)
         {
-            float phi = ((float)r / CapsuleRings) * MathF.PI;
+            float v = (float)r / CapsuleRings;
+            float phi = v * MathF.PI;
             float yOffset = -halfCylHeight;
-            
+
             for (int s = 0; s <= CapsuleSegments; s++)
             {
-                float theta = ((float)s / CapsuleSegments) * MathF.PI * 2f;
+                float u = (float)s / CapsuleSegments;
+                float theta = u * MathF.PI * 2f;
                 float x = radius * MathF.Sin(phi) * MathF.Cos(theta);
                 float y = radius * MathF.Cos(phi) + yOffset;
                 float z = radius * MathF.Sin(phi) * MathF.Sin(theta);
 
+                Vector3 norm = Vector3.Normalize(new Vector3(x, radius * MathF.Cos(phi), z));
+
                 verts.Add(x); verts.Add(y); verts.Add(z);
-                verts.Add(DefaultMaterialColor.X); verts.Add(DefaultMaterialColor.Y); verts.Add(DefaultMaterialColor.Z);
+                verts.Add(norm.X); verts.Add(norm.Y); verts.Add(norm.Z);
+                verts.Add(u); verts.Add(1.0f - v);
             }
         }
 
-        // Indices
         int totalRings = halfRings + (CapsuleRings - halfRings + 1);
         for (int r = 0; r < totalRings - 1; r++)
         {

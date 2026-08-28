@@ -153,7 +153,6 @@ public class SceneViewWindow : EditorWindow
                         var (rOrigin, rDir) = GizmoMath.ScreenToRay(mPos, size, projMat, viewMat);
                         
                         Vector3 spawnPos = Vector3.Zero;
-                        // Ray intersect floor plane Y=0
                         if (rDir.Y != 0)
                         {
                             float t = -rOrigin.Y / rDir.Y;
@@ -161,6 +160,24 @@ public class SceneViewWindow : EditorWindow
                         }
                         
                         TryInstantiate3DModel(sourceFile, registry, spawnPos, netModule);
+                    }
+                    else if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" || ext == ".tga")
+                    {
+                        float sceneAspect = size.X / size.Y;
+                        if (sceneAspect == 0) sceneAspect = 1.0f;
+                        var projMat = _camera.GetProjectionMatrix(sceneAspect);
+                        var viewMat = _camera.GetViewMatrix();
+                        var mPos = ImGui.GetMousePos() - cursorPos;
+                        var (rOrigin, rDir) = GizmoMath.ScreenToRay(mPos, size, projMat, viewMat);
+                        
+                        Vector3 spawnPos = Vector3.Zero;
+                        if (rDir.Y != 0)
+                        {
+                            float t = -rOrigin.Y / rDir.Y;
+                            if (t > 0) spawnPos = rOrigin + rDir * t;
+                        }
+
+                        TryInstantiateSprite(sourceFile, registry, spawnPos, netModule);
                     }
                 }
             }
@@ -449,6 +466,43 @@ public class SceneViewWindow : EditorWindow
             {
                 int netId = (netModule.NetworkManager?.IdentityMap.AssignNetworkId(registry, newEntity) ?? -1);
                 netModule.Replication?.SendSpawn(netId, System.IO.Path.GetFileNameWithoutExtension(sourceFile), 0);
+            }
+        }
+    }
+
+    private void TryInstantiateSprite(string sourceFile, Registry registry, Vector3 position, NetworkModule? netModule)
+    {
+        var guid = _engine.AssetDatabase.GetGuidByPath(sourceFile);
+        if (guid == null)
+        {
+            _engine.AssetDatabase.ProcessFile(sourceFile);
+            guid = _engine.AssetDatabase.GetGuidByPath(sourceFile);
+        }
+
+        if (guid != null)
+        {
+            var newEntity = registry.CreateEntity();
+            registry.AddComponent(newEntity, new TransformComponent { Position = new Silk.NET.Maths.Vector3D<float>(position.X, position.Y, position.Z) });
+            registry.AddComponent(newEntity, new TagComponent { Name = System.IO.Path.GetFileNameWithoutExtension(sourceFile) });
+            registry.AddComponent(newEntity, new MeshComponent { Type = PrimitiveMeshType.Quad, AssetGuid = Guid.Empty });
+            registry.AddComponent(newEntity, new MaterialComponent { AlbedoTextureGuid = guid.Value, IsTransparent = true });
+
+            if (netModule != null)
+            {
+                _ = netModule.NetworkManager?.AssetSync?.AnnounceAssetAsync(sourceFile, (hash) =>
+                {
+                    if (registry.IsAlive(newEntity) && registry.HasComponent<MaterialComponent>(newEntity))
+                    {
+                        ref var mat = ref registry.GetComponent<MaterialComponent>(newEntity);
+                        mat.AlbedoTextureHash = hash;
+                    }
+                });
+
+                if (netModule.NetworkManager?.IsHost == true)
+                {
+                    int netId = (netModule.NetworkManager?.IdentityMap.AssignNetworkId(registry, newEntity) ?? -1);
+                    netModule.Replication?.SendSpawn(netId, System.IO.Path.GetFileNameWithoutExtension(sourceFile), (int)PrimitiveMeshType.Quad);
+                }
             }
         }
     }

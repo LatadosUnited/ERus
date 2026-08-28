@@ -41,11 +41,13 @@ public class NetworkTransport : INetEventListener
     public void InitializeAsClient(string ip, int port)
     {
         IsHost = false;
-        MyUserId = new Random().Next(1, 1000); // Geramos ID de client aleatório
+        // Geramos ID de client estável e positivo baseado em GUID para evitar colisões
+        int generatedId = Guid.NewGuid().GetHashCode() & 0x7FFFFFFF;
+        MyUserId = generatedId == 0 ? 1 : generatedId;
         _netManager = new NetManager(this) { ChannelsCount = 2 };
         _netManager.Start();
         _netManager.Connect(ip, port, "ERusKeys");
-        Console.WriteLine($"[Network] Client conectando a {ip}:{port}...");
+        Console.WriteLine($"[Network] Client conectando a {ip}:{port} com User ID {MyUserId}...");
     }
 
     public void PollEvents() => _netManager?.PollEvents();

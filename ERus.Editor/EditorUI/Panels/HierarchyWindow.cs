@@ -171,6 +171,10 @@ public class HierarchyWindow : EditorWindow
                         {
                             TryInstantiate3DModel(sourceFile, registry, null);
                         }
+                        else if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" || ext == ".tga")
+                        {
+                            TryInstantiateSprite(sourceFile, registry, null);
+                        }
                     }
                 }
                 ImGui.EndDragDropTarget();
@@ -464,6 +468,41 @@ public class HierarchyWindow : EditorWindow
                     {
                         TryInstantiate3DModel(sourceFile, registry, entity);
                     }
+                    else if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" || ext == ".tga")
+                    {
+                        var guid = _engine.AssetDatabase.GetGuidByPath(sourceFile);
+                        if (guid == null)
+                        {
+                            _engine.AssetDatabase.ProcessFile(sourceFile);
+                            guid = _engine.AssetDatabase.GetGuidByPath(sourceFile);
+                        }
+                        if (guid != null)
+                        {
+                            if (!registry.HasComponent<MaterialComponent>(entity))
+                            {
+                                registry.AddComponent(entity, new MaterialComponent());
+                            }
+                            ref var mat = ref registry.GetComponent<MaterialComponent>(entity);
+                            mat.AlbedoTextureGuid = guid.Value;
+                            
+                            if (netModule != null)
+                            {
+                                var targetEntity = entity;
+                                _ = netModule.NetworkManager?.AssetSync?.AnnounceAssetAsync(sourceFile, (hash) => {
+                                    if (registry.IsAlive(targetEntity) && registry.HasComponent<MaterialComponent>(targetEntity))
+                                    {
+                                        ref var updatedMat = ref registry.GetComponent<MaterialComponent>(targetEntity);
+                                        updatedMat.AlbedoTextureHash = hash;
+                                        if (registry.HasComponent<NetworkIdentityComponent>(targetEntity))
+                                        {
+                                            var netId = registry.GetComponent<NetworkIdentityComponent>(targetEntity).NetworkId;
+                                            netModule.Replication?.SendUpdateMaterial(netId, updatedMat.ColorTint, hash, updatedMat.Tiling, updatedMat.Offset, updatedMat.Metallic, updatedMat.Roughness, updatedMat.IsTransparent, updatedMat.AlphaCutoff);
+                                        }
+                                    }
+                                });
+                            }
+                        }
+                    }
                 }
                 ImGui.EndDragDropTarget();
             }
@@ -514,6 +553,50 @@ public class HierarchyWindow : EditorWindow
             {
                 int netId = (netModule.NetworkManager?.IdentityMap.AssignNetworkId(registry, newEntity) ?? -1);
                 netModule.Replication?.SendSpawn(netId, System.IO.Path.GetFileNameWithoutExtension(sourceFile), 0);
+            }
+            _controller.UndoSystem.Record(new ERus.Editor.EditorUI.Commands.EntityLifecycleCommand(newEntity, registry, ERus.Editor.EditorUI.Commands.LifecycleAction.Create));
+        }
+    }
+
+    private void TryInstantiateSprite(string sourceFile, Registry registry, Entity? parent)
+    {
+        var guid = _engine.AssetDatabase.GetGuidByPath(sourceFile);
+        if (guid == null)
+        {
+            _engine.AssetDatabase.ProcessFile(sourceFile);
+            guid = _engine.AssetDatabase.GetGuidByPath(sourceFile);
+        }
+
+        if (guid != null)
+        {
+            var newEntity = registry.CreateEntity();
+            registry.AddComponent(newEntity, new TransformComponent());
+            registry.AddComponent(newEntity, new TagComponent { Name = System.IO.Path.GetFileNameWithoutExtension(sourceFile) });
+            registry.AddComponent(newEntity, new MeshComponent { Type = PrimitiveMeshType.Quad, AssetGuid = Guid.Empty });
+            registry.AddComponent(newEntity, new MaterialComponent { AlbedoTextureGuid = guid.Value, IsTransparent = true });
+
+            if (parent != null)
+            {
+                ERus.Engine.ECS.RelationshipSystem.SetParent(newEntity, parent.Value, registry);
+            }
+
+            var netModule = _engine.GetModule<NetworkModule>();
+            if (netModule != null)
+            {
+                _ = netModule.NetworkManager?.AssetSync?.AnnounceAssetAsync(sourceFile, (hash) =>
+                {
+                    if (registry.IsAlive(newEntity) && registry.HasComponent<MaterialComponent>(newEntity))
+                    {
+                        ref var mat = ref registry.GetComponent<MaterialComponent>(newEntity);
+                        mat.AlbedoTextureHash = hash;
+                    }
+                });
+
+                if (netModule.NetworkManager?.IsHost == true)
+                {
+                    int netId = (netModule.NetworkManager?.IdentityMap.AssignNetworkId(registry, newEntity) ?? -1);
+                    netModule.Replication?.SendSpawn(netId, System.IO.Path.GetFileNameWithoutExtension(sourceFile), (int)PrimitiveMeshType.Quad);
+                }
             }
             _controller.UndoSystem.Record(new ERus.Editor.EditorUI.Commands.EntityLifecycleCommand(newEntity, registry, ERus.Editor.EditorUI.Commands.LifecycleAction.Create));
         }
