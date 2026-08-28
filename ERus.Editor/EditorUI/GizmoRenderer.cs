@@ -157,6 +157,76 @@ public static class GizmoRenderer
         return new Vector4(1, 1, 1, 1);
     }
 
+    /// <summary>
+    /// Desenha a caixa delimitadora (bounding box) e a tag do colaborador na Viewport.
+    /// </summary>
+    public static void DrawCollaboratorSelection(
+        ImDrawListPtr drawList, Vector3 entityPos, Vector3 entityScale,
+        Matrix4x4 viewProj, Vector2 cursorPos, Vector2 viewportSize,
+        string username, Vector4 userColor)
+    {
+        // Half sizes (mínimo 0.5 para entidades sem malha/pequenas)
+        float hx = MathF.Max(0.5f, MathF.Abs(entityScale.X) * 0.5f);
+        float hy = MathF.Max(0.5f, MathF.Abs(entityScale.Y) * 0.5f);
+        float hz = MathF.Max(0.5f, MathF.Abs(entityScale.Z) * 0.5f);
+
+        Vector3[] corners = new Vector3[8]
+        {
+            entityPos + new Vector3(-hx, -hy, -hz),
+            entityPos + new Vector3( hx, -hy, -hz),
+            entityPos + new Vector3( hx,  hy, -hz),
+            entityPos + new Vector3(-hx,  hy, -hz),
+            entityPos + new Vector3(-hx, -hy,  hz),
+            entityPos + new Vector3( hx, -hy,  hz),
+            entityPos + new Vector3( hx,  hy,  hz),
+            entityPos + new Vector3(-hx,  hy,  hz)
+        };
+
+        Vector2[] screenCorners = new Vector2[8];
+        for (int i = 0; i < 8; i++)
+        {
+            screenCorners[i] = GizmoMath.WorldToScreen(corners[i], viewProj, cursorPos, viewportSize);
+        }
+
+        uint boxColor = GetU32(new Vector4(userColor.X, userColor.Y, userColor.Z, 0.85f));
+        float thickness = 2.0f;
+
+        // 12 arestas do cubo
+        int[][] edges = new int[][]
+        {
+            new[] {0,1}, new[] {1,2}, new[] {2,3}, new[] {3,0},
+            new[] {4,5}, new[] {5,6}, new[] {6,7}, new[] {7,4},
+            new[] {0,4}, new[] {1,5}, new[] {2,6}, new[] {3,7}
+        };
+
+        foreach (var edge in edges)
+        {
+            var p1 = screenCorners[edge[0]];
+            var p2 = screenCorners[edge[1]];
+            if (p1.X != -1000 && p2.X != -1000)
+            {
+                drawList.AddLine(p1, p2, boxColor, thickness);
+            }
+        }
+
+        // Tag com nome do usuário acima do objeto
+        Vector3 topWorld = entityPos + new Vector3(0, hy + 0.3f, 0);
+        var tagPos = GizmoMath.WorldToScreen(topWorld, viewProj, cursorPos, viewportSize);
+        if (tagPos.X != -1000)
+        {
+            string label = $" {username} ";
+            var textSize = ImGui.CalcTextSize(label);
+            var tagMin = tagPos - new Vector2(textSize.X * 0.5f, textSize.Y + 4);
+            var tagMax = tagPos + new Vector2(textSize.X * 0.5f, 4);
+
+            uint bgCol = GetU32(new Vector4(0.1f, 0.1f, 0.12f, 0.85f));
+            uint borderCol = GetU32(userColor);
+            drawList.AddRectFilled(tagMin, tagMax, bgCol, 4.0f);
+            drawList.AddRect(tagMin, tagMax, borderCol, 4.0f, ImDrawFlags.None, 1.5f);
+            drawList.AddText(tagMin + new Vector2(0, 2), borderCol, label);
+        }
+    }
+
     private static uint GetU32(Vector4 v) => ImGui.ColorConvertFloat4ToU32(v);
 }
 

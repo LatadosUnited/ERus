@@ -3,6 +3,7 @@ using LiteNetLib;
 using ERus.Engine.Network.Core;
 using ERus.Engine.Network.Replication;
 using ERus.Engine.Network.Packets.Assets;
+using ERus.Engine.Network.Collaboration;
 
 namespace ERus.Engine.Network;
 
@@ -13,6 +14,8 @@ public class NetworkManager
     public AssetSyncManager AssetSync { get; }
     public NetworkIdentityMap IdentityMap { get; }
     public WorldStateSynchronizer WorldSynchronizer { get; }
+    public CollaboratorPresenceManager Presence { get; } = new();
+    public string MyUsername { get; set; } = "Dev_" + Environment.UserName;
 
     public NetworkManager(ERus.Engine.Core.Engine engine)
     {
@@ -23,6 +26,11 @@ public class NetworkManager
         WorldSynchronizer = new WorldStateSynchronizer(engine, Transport, Dispatcher, IdentityMap);
 
         Dispatcher.SubscribeReusable<AssetAnnouncePacket>((packet, peer) => AssetSync.OnAssetAnnouncedReceived(packet));
+        
+        Transport.OnPeerDisconnectedEvent += (peer, info) =>
+        {
+            Presence.RemoveCollaborator(peer.Id);
+        };
     }
 
     public bool IsHost => Transport.IsHost;
@@ -58,6 +66,7 @@ public class NetworkManager
     {
         AssetSync.StopServer();
         Transport.Stop();
+        Presence.Clear();
     }
 
     public void SendAssetAnnounce(AssetAnnouncePacket packet)

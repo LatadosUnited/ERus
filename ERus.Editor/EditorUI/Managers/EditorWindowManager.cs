@@ -16,6 +16,7 @@ public class EditorWindowManager
     public SceneViewWindow SceneView { get; private set; }
     public GameViewWindow GameView { get; private set; }
     public InputMapWindow InputMap { get; private set; }
+    public CollaborationWindow Collaboration { get; private set; }
 
     public EditorWindowManager(EditorUIController controller, ERus.Engine.Core.Engine engine)
     {
@@ -29,6 +30,7 @@ public class EditorWindowManager
         SceneView = new SceneViewWindow(_controller, _engine);
         GameView = new GameViewWindow(_engine);
         InputMap = new InputMapWindow();
+        Collaboration = new CollaborationWindow(_controller, _engine);
     }
 
     public void DrawWindows()
@@ -58,6 +60,13 @@ public class EditorWindowManager
         ImGui.Begin("Console");
         Console.DrawRawContent();
         ImGui.End();
+
+        if (Collaboration.IsOpen)
+        {
+            ImGui.Begin("Collaboration");
+            Collaboration.DrawRawContent();
+            ImGui.End();
+        }
 
         if (InputMap.IsOpen)
         {

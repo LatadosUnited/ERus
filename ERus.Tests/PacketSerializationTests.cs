@@ -168,4 +168,58 @@ public class PacketSerializationTests
         Assert.Equal(original.FieldName, deserialized.FieldName);
         Assert.Equal(original.Value, deserialized.Value);
     }
+
+    [Fact]
+    public void UserPresencePacket_Serialization_Works()
+    {
+        var original = new UserPresencePacket
+        {
+            UserId = 10,
+            Username = "Leandro",
+            SelectedNetworkId = 42,
+            ColorR = 255,
+            ColorG = 128,
+            ColorB = 64,
+            IsDisconnecting = false
+        };
+
+        var writer = new NetDataWriter();
+        original.Serialize(writer);
+
+        var reader = new NetDataReader(writer.Data);
+        var deserialized = new UserPresencePacket();
+        deserialized.Deserialize(reader);
+
+        Assert.Equal(original.UserId, deserialized.UserId);
+        Assert.Equal(original.Username, deserialized.Username);
+        Assert.Equal(original.SelectedNetworkId, deserialized.SelectedNetworkId);
+        Assert.Equal(original.ColorR, deserialized.ColorR);
+        Assert.Equal(original.ColorG, deserialized.ColorG);
+        Assert.Equal(original.ColorB, deserialized.ColorB);
+        Assert.Equal(original.IsDisconnecting, deserialized.IsDisconnecting);
+    }
+
+    [Fact]
+    public void ChatMessagePacket_Serialization_Works()
+    {
+        var original = new ChatMessagePacket
+        {
+            SenderId = 5,
+            Username = "Mateus",
+            Message = "Olá equipe, alterei o material do chão!",
+            Timestamp = "15:30:00"
+        };
+
+        var writer = new NetDataWriter();
+        original.Serialize(writer);
+
+        var reader = new NetDataReader(writer.Data);
+        var deserialized = new ChatMessagePacket();
+        deserialized.Deserialize(reader);
+
+        Assert.Equal(original.SenderId, deserialized.SenderId);
+        Assert.Equal(original.Username, deserialized.Username);
+        Assert.Equal(original.Message, deserialized.Message);
+        Assert.Equal(original.Timestamp, deserialized.Timestamp);
+    }
 }

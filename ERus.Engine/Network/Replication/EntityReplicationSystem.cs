@@ -470,6 +470,28 @@ public class EntityReplicationSystem : BaseSystem
             }
         });
 
+        _dispatcher.SubscribeReusable<UserPresencePacket>((packet, peer) =>
+        {
+            var netModule = _engine.GetModule<ERus.Engine.Modules.NetworkModule>();
+            netModule?.NetworkManager?.Presence.UpdatePresence(packet);
+
+            if (_transport.IsHost)
+            {
+                _dispatcher.SendToAllExcept(packet, peer, DeliveryMethod.ReliableOrdered);
+            }
+        });
+
+        _dispatcher.SubscribeReusable<ChatMessagePacket>((packet, peer) =>
+        {
+            var netModule = _engine.GetModule<ERus.Engine.Modules.NetworkModule>();
+            netModule?.NetworkManager?.Presence.AddChatMessage(packet);
+
+            if (_transport.IsHost)
+            {
+                _dispatcher.SendToAllExcept(packet, peer, DeliveryMethod.ReliableOrdered);
+            }
+        });
+
         RegisterRelayedHandler<LoadScenePacket>((packet, peer) =>
         {
             if (!_transport.IsHost)
@@ -570,6 +592,48 @@ public class EntityReplicationSystem : BaseSystem
     public void SendEngineState(byte state)
     {
         var packet = new EngineStatePacket { State = state };
+        if (_transport.IsHost) _dispatcher.SendToAllExcept(packet, null, DeliveryMethod.ReliableOrdered);
+        else _dispatcher.SendToServer(packet, DeliveryMethod.ReliableOrdered);
+    }
+
+    public void SendUserPresence(int selectedNetworkId, bool isDisconnecting = false)
+    {
+        var netModule = _engine.GetModule<ERus.Engine.Modules.NetworkModule>();
+        string myUsername = netModule?.NetworkManager?.MyUsername ?? ("Dev_" + _transport.MyUserId);
+        var (r, g, b) = ERus.Engine.Network.Collaboration.CollaboratorPresenceManager.GenerateUserColor(myUsername);
+
+        var packet = new UserPresencePacket
+        {
+            UserId = _transport.MyUserId,
+            Username = myUsername,
+            SelectedNetworkId = selectedNetworkId,
+            ColorR = r,
+            ColorG = g,
+            ColorB = b,
+            IsDisconnecting = isDisconnecting
+        };
+
+        if (_transport.IsHost) _dispatcher.SendToAllExcept(packet, null, DeliveryMethod.ReliableOrdered);
+        else _dispatcher.SendToServer(packet, DeliveryMethod.ReliableOrdered);
+    }
+
+    public void SendChatMessage(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message)) return;
+        var netModule = _engine.GetModule<ERus.Engine.Modules.NetworkModule>();
+        string myUsername = netModule?.NetworkManager?.MyUsername ?? ("Dev_" + _transport.MyUserId);
+
+        var packet = new ChatMessagePacket
+        {
+            SenderId = _transport.MyUserId,
+            Username = myUsername,
+            Message = message,
+            Timestamp = DateTime.Now.ToString("HH:mm:ss")
+        };
+
+        // Adicionar localmente primeiro
+        netModule?.NetworkManager?.Presence.AddChatMessage(packet);
+
         if (_transport.IsHost) _dispatcher.SendToAllExcept(packet, null, DeliveryMethod.ReliableOrdered);
         else _dispatcher.SendToServer(packet, DeliveryMethod.ReliableOrdered);
     }

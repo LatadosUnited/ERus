@@ -36,6 +36,25 @@ public class EditorUIController
         _toolbar = new EditorToolbar(this, _engine);
         _layoutManager = new EditorLayoutManager();
         _inputHandler = new EditorInputHandler(_engine, UndoSystem);
+
+        EditorServices.Selection.OnSelectionChanged += (selectedEntity) =>
+        {
+            var netModule = _engine.GetModule<ERus.Engine.Modules.NetworkModule>();
+            if (netModule != null && netModule.NetworkManager != null && netModule.NetworkManager.IsConnected)
+            {
+                int netId = -1;
+                if (selectedEntity.HasValue)
+                {
+                    var ecs = _engine.GetModule<ERus.Engine.Modules.ECSModule>();
+                    var reg = ecs?.ActiveScene?.Registry;
+                    if (reg != null && reg.HasComponent<ERus.Engine.ECS.NetworkIdentityComponent>(selectedEntity.Value))
+                    {
+                        netId = reg.GetComponent<ERus.Engine.ECS.NetworkIdentityComponent>(selectedEntity.Value).NetworkId;
+                    }
+                }
+                netModule.Replication?.SendUserPresence(netId);
+            }
+        };
     }
 
     public void Initialize(IWindow window, IInputContext input, GL gl)

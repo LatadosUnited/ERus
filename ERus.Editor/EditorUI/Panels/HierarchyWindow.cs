@@ -261,22 +261,31 @@ public class HierarchyWindow : EditorWindow
         if (registry.HasComponent<TagComponent>(entity))
             name = registry.GetComponent<TagComponent>(entity).Name;
 
+        if (registry.HasComponent<CameraComponent>(entity))
+            icon = FontAwesome.Camera;
+        else if (registry.HasComponent<MeshComponent>(entity))
+            icon = FontAwesome.Cube;
+
         bool isNetworked = false;
         bool isLocked = false;
+        int netIdNumber = -1;
         if (registry.HasComponent<NetworkIdentityComponent>(entity))
         {
             var netId = registry.GetComponent<NetworkIdentityComponent>(entity);
             isNetworked = true;
             isLocked = netId.LockUserId != -1;
+            netIdNumber = netId.NetworkId;
         }
 
-        string netIcon = isNetworked ? (isLocked ? FontAwesome.Link : FontAwesome.NetworkWired) : "";
-        string displayName = string.IsNullOrEmpty(netIcon) ? $"{icon} {name}" : $"{icon} {name}  {netIcon}";
+        var netModule = _engine.GetModule<NetworkModule>();
+        var collab = (netIdNumber != -1 && netModule?.NetworkManager?.Presence != null)
+            ? netModule.NetworkManager.Presence.GetCollaboratorSelecting(netIdNumber)
+            : null;
 
-        if (registry.HasComponent<CameraComponent>(entity))
-            icon = FontAwesome.Camera;
-        else if (registry.HasComponent<MeshComponent>(entity))
-            icon = FontAwesome.Cube;
+        bool isCollabSelecting = collab != null && collab.UserId != (netModule?.NetworkManager?.MyUserId ?? -1);
+        string netIcon = isNetworked ? (isLocked ? FontAwesome.Link : FontAwesome.NetworkWired) : "";
+        string collabBadge = isCollabSelecting ? $" [{collab!.Username}]" : "";
+        string displayName = $"{icon} {name}" + (string.IsNullOrEmpty(netIcon) ? "" : $"  {netIcon}") + collabBadge;
 
         bool isSelected = EditorServices.Selection.SelectedEntities.Contains(entity);
         bool hasChildren = false;
@@ -329,9 +338,21 @@ public class HierarchyWindow : EditorWindow
         }
         else
         {
-            if (isLocked) ImGui.PushStyleColor(ImGuiCol.Text, new System.Numerics.Vector4(0.6f, 0.6f, 0.6f, 1.0f));
+            if (isCollabSelecting)
+            {
+                ImGui.PushStyleColor(ImGuiCol.Text, collab!.ColorVector);
+            }
+            else if (isLocked)
+            {
+                ImGui.PushStyleColor(ImGuiCol.Text, new System.Numerics.Vector4(0.6f, 0.6f, 0.6f, 1.0f));
+            }
+
             opened = ImGui.TreeNodeEx((IntPtr)(entity.Id + 1), flags, displayName);
-            if (isLocked) ImGui.PopStyleColor();
+
+            if (isCollabSelecting || isLocked)
+            {
+                ImGui.PopStyleColor();
+            }
         }
 
         // Seleção ao clicar
@@ -362,7 +383,6 @@ public class HierarchyWindow : EditorWindow
             }
             if (ImGui.MenuItem($"{FontAwesome.Trash} Delete"))
             {
-                var netModule = _engine.GetModule<NetworkModule>();
                 if (netModule != null && registry.HasComponent<NetworkIdentityComponent>(entity))
                 {
                     var netId = registry.GetComponent<NetworkIdentityComponent>(entity).NetworkId;
@@ -381,10 +401,9 @@ public class HierarchyWindow : EditorWindow
                     if (ImGui.MenuItem($"{FontAwesome.Link} Take Control"))
                     {
                         ref var netId = ref registry.GetComponent<NetworkIdentityComponent>(entity);
-                        var netModule = _engine.GetModule<NetworkModule>();
                         int myPeerId = netModule?.NetworkManager?.MyUserId ?? 0;
                         netId.LockUserId = myPeerId; // Locally lock immediately (predictive)
-                        // TODO: Enviar LockEntityPacket
+                        netModule?.Replication?.RequestLock(netId.NetworkId);
                         ConsoleLog.Log($"[Rede] Took control of {name}");
                     }
                 }

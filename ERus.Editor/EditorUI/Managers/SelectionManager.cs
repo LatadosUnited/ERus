@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using ERus.Engine.ECS;
@@ -8,14 +9,20 @@ public class SelectionManager
 {
     public HashSet<Entity> SelectedEntities { get; } = new();
 
+    public event Action<Entity?>? OnSelectionChanged;
+
     public Entity? SelectedEntity
     {
         get => SelectedEntities.Count > 0 ? SelectedEntities.First() : null;
         set
         {
+            var prev = SelectedEntity;
             SelectedEntities.Clear();
             if (value.HasValue)
                 SelectedEntities.Add(value.Value);
+
+            if (prev != value)
+                OnSelectionChanged?.Invoke(value);
         }
     }
 
@@ -23,6 +30,8 @@ public class SelectionManager
     {
         if (!SelectedEntities.Remove(entity))
             SelectedEntities.Add(entity);
+
+        OnSelectionChanged?.Invoke(SelectedEntity);
     }
 
     public void Select(Entity entity, bool additive)
@@ -36,10 +45,14 @@ public class SelectionManager
             SelectedEntities.Clear();
             SelectedEntities.Add(entity);
         }
+        OnSelectionChanged?.Invoke(SelectedEntity);
     }
 
     public void ClearSelection()
     {
+        bool hadSelection = SelectedEntities.Count > 0;
         SelectedEntities.Clear();
+        if (hadSelection)
+            OnSelectionChanged?.Invoke(null);
     }
 }

@@ -260,6 +260,10 @@ public class SceneViewWindow : EditorWindow
 
                         if (_gizmo.UpdateDrag(rayOrigin, rayDir, ref t, axes, _currentMode, snapping))
                         {
+                            if (netId != -1)
+                            {
+                                netModule?.Replication?.SendTransform(netId, t.Position, t.Rotation, t.Scale);
+                            }
                         }
                     }
 
@@ -276,9 +280,34 @@ public class SceneViewWindow : EditorWindow
                             $"{_currentMode} Entity {entity.Id}");
                         _controller.UndoSystem.Record(cmd);
 
-                        // Unlock na rede
+                        // Enviar estado final e unlock na rede
                         if (netId != -1)
+                        {
+                            netModule?.Replication?.SendTransform(netId, t.Position, t.Rotation, t.Scale);
                             netModule?.Replication?.SendUnlock(netId);
+                        }
+                    }
+                }
+            }
+        }
+
+        // --- RENDER COLLABORATOR SELECTIONS ---
+        if (netModule?.NetworkManager?.Presence != null)
+        {
+            int myId = netModule.NetworkManager.MyUserId;
+            foreach (var collab in netModule.NetworkManager.Presence.Collaborators.Values)
+            {
+                if (collab.UserId != myId && collab.SelectedNetworkId != -1)
+                {
+                    if (netModule.NetworkManager.IdentityMap.TryGetEntity(collab.SelectedNetworkId, out var rEntity))
+                    {
+                        if (registry.HasComponent<TransformComponent>(rEntity))
+                        {
+                            var rT = registry.GetComponent<TransformComponent>(rEntity);
+                            var rPos = new Vector3(rT.Position.X, rT.Position.Y, rT.Position.Z);
+                            var rScale = new Vector3(rT.Scale.X, rT.Scale.Y, rT.Scale.Z);
+                            GizmoRenderer.DrawCollaboratorSelection(drawList, rPos, rScale, viewProj, cursorPos, size, collab.Username, collab.ColorVector);
+                        }
                     }
                 }
             }

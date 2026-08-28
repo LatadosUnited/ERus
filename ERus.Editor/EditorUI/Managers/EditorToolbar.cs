@@ -54,6 +54,11 @@ public class EditorToolbar
 
             if (ImGui.BeginMenu("Window"))
             {
+                if (ImGui.MenuItem("Collaboration", "", _controller.WindowManager.Collaboration.IsOpen))
+                {
+                    _controller.WindowManager.Collaboration.IsOpen = !_controller.WindowManager.Collaboration.IsOpen;
+                }
+
                 if (ImGui.MenuItem("Input Mapping"))
                 {
                     _controller.WindowManager.InputMap.IsOpen = true;
