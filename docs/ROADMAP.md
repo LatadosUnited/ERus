@@ -50,12 +50,16 @@ timeline
 
 ---
 
-### 💡 **v0.5.50: Novos Objetos, Iluminação & Componentes ECS**
+### 💡 **v0.5.50: Novos Objetos, Iluminação, Prefabs & Componentes ECS**
 - 💡 **Sistema de Iluminação 3D:**
   - `LightComponent` com suporte a **Directional Light** (Sol), **Point Light** (Lâmpada/Tocha) e **Spot Light** (Lanterna) com cor, intensidade e atenuação de raio.
-- 🌫️ **Ambiente & Efeitos:**
+- 🌫️ **Ambiente, Neblina & Efeitos:**
   - `SkyboxComponent` / `EnvironmentComponent` (fundo com gradiente ou cubemap 360°).
+  - `FogComponent` / **Neblina Atmosférica 3D** (Distance Fog linear e exponencial com cor e densidade ajustáveis para profundidade de cena).
   - `ParticleEmitterComponent` (sistema básico de partículas para fogo, fumaça, faíscas e poeira).
+- 🧱 **Sistema de Prefabs Reutilizáveis (`.prefab`):**
+  - Salvar qualquer entidade com seus filhos e componentes configurados como um arquivo `.prefab` no navegador de arquivos.
+  - Arrastar prefabs do navegador direto para a cena ou instanciar via script C# (`Instantiate("Player.prefab", position)`).
 - 🏃‍♂️ **Novos Componentes de Gameplay:**
   - `CharacterControllerComponent` (controlador de movimentação com detecção suave de degraus, inclinação e solo sem deslize físico indesejado).
   - `BillboardComponent` (sprites/ícones 2D que sempre se alinham de frente para a câmera).
