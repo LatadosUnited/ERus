@@ -15,6 +15,7 @@ timeline
         v0.5.60 : Gameplay & Físicas em C# : OnCollision / OnTrigger : Raycasting C#
         v0.5.70 : Animator Controller & Animações : State Machine & Cross-Fade : Grafo Visual
         v0.5.80 : Áudio 3D Espacial : AudioSource & Listener : Efeitos e Música
+        v0.5.90 : Documentação Integrada & API Reference : Janela Help no Editor : Templates C#
         v0.6.00 : AI-Native Engine : Servidor MCP Integrado : Automação por IA
         v0.6.50 : Project Settings & Editor Preferences : Player, Física, Gráficos : Tags & Layers : Auto-Save
         v0.7.00 : Standalone Game Builder : Templates de Projetos no Hub : Exportador .exe
@@ -89,6 +90,17 @@ timeline
 - 🎵 **Formatos Suportados:** Decodificação e reprodução de `.wav`, `.ogg` e `.mp3`.
 - 🌐 **Atenuação Espacial:** Atenuação de volume por distância 3D (*Spatial Blend* 2D/3D, curvas de atenuação).
 - 📜 **API de Áudio nos Scripts:** `audioSource.Play()`, `Pause()`, `PlayOneShot(clip)`.
+
+---
+
+### 📖 **v0.5.90: Documentação Integrada & API Reference**
+- 📚 **Janela `Help -> Scripting API Reference` no Editor:**
+  - Janela acoplável no ImGui com busca instantânea de métodos e classes (`Transform`, `Input`, `Physics`, `Network`, `ECS`).
+  - Snippets de código C# com exemplos práticos e botão de cópia com 1 clique (*"Copy Code"*).
+- 📝 **Templates Inteligentes de Scripts C#:**
+  - Ao clicar em `Create -> C# Script` no navegador de arquivos, o arquivo gerado já vem com exemplos comentados de movimentação, leitura de input, detecção de colisões e busca de componentes.
+- 🌐 **Aba "Learn / Documentação" no ERus Hub:**
+  - Seção dedicada no launcher com guias de início rápido, manuais em Markdown e links diretos para a documentação offline da engine.
 
 ---
 
