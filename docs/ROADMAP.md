@@ -48,6 +48,7 @@ timeline
 - 👁️ **Miniaturas e Preview:** Visualização gráfica de imagens e texturas no navegador de arquivos da engine.
 - 🌐 **Sincronização de Texturas:** Replicação automática de novos arquivos de imagem para parceiros conectados na rede.
 - 🆔 **Formato de Referência de Asset:** Definir agora (GUID estável por asset, não path) o esquema que materiais, prefabs, áudio e animações vão usar para referenciar arquivos — decisão que fica cara de migrar depois que v0.9.00 (Asset Bundling) já estiver em produção.
+- 🎲 **Correção de ID de Rede Único:** Substituição do `Random.Next(1, 1000)` no `NetworkTransport` por identificador único estável (`NetPeer.Id` / `Guid`), eliminando o risco crítico de colisão de usuários e locks fantasma.
 - 🌐 **Estratégia de Rede:** texturas sincronizam via canal de asset (TCP) já existente; definir se o preview/thumbnail é gerado local ou replicado.
 
 ---
@@ -152,11 +153,14 @@ timeline
 
 ---
 
-### 🌐 **v0.6.00: Resiliência de Rede — Host Migration & Fallback**
-*(endereça explicitamente o risco de topologia P2P sem migração de host, já anotado desde v0.5.21)*
+### 🌐 **v0.6.00: Resiliência de Rede, Autenticação & Fallback**
+*(endereça os riscos de estabilidade, segurança e topologia P2P identificados na engine)*
 - 🔁 **Host Migration:** eleição de novo host quando o atual desconecta, sem derrubar a sessão colaborativa.
-- 💾 **Fallback de Sessão:** reconexão automática de clientes e reconciliação de estado (Temporal Locking) após a migração.
-- 🧪 **Cenário de Teste:** queda simulada do host durante edição concorrente para validar reconciliação sem perda de dados.
+- 🔓 **Liberação Automática de Deadlocks de Lock:** no evento `OnPeerDisconnected`, o Host destrava e limpa imediatamente todas as entidades que estavam bloqueadas (`LockedByUserId`) pelo usuário desconectado.
+- 📡 **Reconexão Automática & Fallback:** reconexão transparente de clientes em caso de oscilações de rede (Wi-Fi instável) e reconciliação delta de estado (Temporal Locking).
+- 🔑 **Autenticação & Handshake Seguro:** substituição da chave global fixa `"ERusKeys"` por tokens de sessão temporários criptografados / senha de projeto para proteção contra conexões maliciosas e comandos de destruição não autorizados.
+- 📊 **Monitoramento de Latência & Jitter (RTT):** implementação do callback `OnNetworkLatencyUpdate` exibindo Ping e Jitter em tempo real na janela de colaboração para diagnóstico de conexões lentas ou instáveis.
+- 🧪 **Cenário de Teste Automatizado:** queda simulada do host durante edição concorrente para validar reconciliação sem perda de dados.
 
 ---
 
@@ -192,6 +196,9 @@ timeline
   - Contador de Draw Calls, contagem de Triângulos/Vértices e monitor de alocação de memória RAM e GC (`Garbage Collector`).
 - 👁️ **Frustum Culling Avançado:**
   - Descarte automático de objetos fora do campo de visão da câmera para máxima taxa de quadros (FPS) em cenas grandes.
+- 📶 **Otimização de Banda & Delta Compression (Rede):**
+  - Otimização do `EntityReplicationSystem` transmitindo apenas propriedades alteradas (Delta Compression) em vez de pacotes completos.
+  - *Area of Interest / Distance Filtering:* Priorização e envio de pacotes apenas para entidades próximas ao campo de visão ou posição do jogador.
 
 ---
 
