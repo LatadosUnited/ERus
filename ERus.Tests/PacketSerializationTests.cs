@@ -84,37 +84,13 @@ public class PacketSerializationTests
             }
         };
 
-        var processor = new NetPacketProcessor();
-        processor.RegisterNestedType<ScriptPacketData>(
-            (w, data) => {
-                w.Put(data.ScriptTypeName);
-                w.Put(data.FieldValues.Count);
-                foreach (var kvp in data.FieldValues) {
-                    w.Put(kvp.Key);
-                    w.Put(kvp.Value);
-                }
-            },
-            r => {
-                var data = new ScriptPacketData();
-                data.ScriptTypeName = r.GetString();
-                int fieldCount = r.GetInt();
-                data.FieldValues = new Dictionary<string, string>(fieldCount);
-                for (int f = 0; f < fieldCount; f++) {
-                    data.FieldValues[r.GetString()] = r.GetString();
-                }
-                return data;
-            }
-        );
-
         var writer = new NetDataWriter();
-        processor.Write(writer, original);
+        original.Serialize(writer);
 
         var reader = new NetDataReader(writer.Data);
-        UpdateScriptPacket? deserialized = null;
-        processor.SubscribeReusable<UpdateScriptPacket, LiteNetLib.NetPeer>((packet, peer) => { deserialized = packet; });
-        processor.ReadAllPackets(reader, null);
+        var deserialized = new UpdateScriptPacket();
+        deserialized.Deserialize(reader);
 
-        Assert.NotNull(deserialized);
         Assert.Equal(original.NetworkId, deserialized.NetworkId);
         Assert.Single(deserialized.Scripts);
         Assert.Equal(original.Scripts[0].ScriptTypeName, deserialized.Scripts[0].ScriptTypeName);
@@ -139,5 +115,57 @@ public class PacketSerializationTests
         deserialized.Deserialize(reader);
 
         Assert.Equal(original.SceneName, deserialized.SceneName);
+    }
+
+    [Fact]
+    public void ScriptRpcPacket_Serialization_Works()
+    {
+        var original = new ScriptRpcPacket
+        {
+            NetworkId = 123,
+            ScriptTypeName = "EnemyAI",
+            MethodName = "TakeDamage",
+            IsServerRpc = true,
+            Arguments = new[] { "50", "Fire" }
+        };
+
+        var writer = new NetDataWriter();
+        original.Serialize(writer);
+
+        var reader = new NetDataReader(writer.Data);
+        var deserialized = new ScriptRpcPacket();
+        deserialized.Deserialize(reader);
+
+        Assert.Equal(original.NetworkId, deserialized.NetworkId);
+        Assert.Equal(original.ScriptTypeName, deserialized.ScriptTypeName);
+        Assert.Equal(original.MethodName, deserialized.MethodName);
+        Assert.Equal(original.IsServerRpc, deserialized.IsServerRpc);
+        Assert.Equal(2, deserialized.Arguments.Length);
+        Assert.Equal("50", deserialized.Arguments[0]);
+        Assert.Equal("Fire", deserialized.Arguments[1]);
+    }
+
+    [Fact]
+    public void ScriptSyncVarPacket_Serialization_Works()
+    {
+        var original = new ScriptSyncVarPacket
+        {
+            NetworkId = 456,
+            ScriptTypeName = "PlayerStats",
+            FieldName = "Health",
+            Value = "100"
+        };
+
+        var writer = new NetDataWriter();
+        original.Serialize(writer);
+
+        var reader = new NetDataReader(writer.Data);
+        var deserialized = new ScriptSyncVarPacket();
+        deserialized.Deserialize(reader);
+
+        Assert.Equal(original.NetworkId, deserialized.NetworkId);
+        Assert.Equal(original.ScriptTypeName, deserialized.ScriptTypeName);
+        Assert.Equal(original.FieldName, deserialized.FieldName);
+        Assert.Equal(original.Value, deserialized.Value);
     }
 }

@@ -24,6 +24,7 @@ public class ProjectsTab
     private AddServerModal _addServerModal;
     private CreateProjectModal _createProjectModal;
     private ChangeRemoteVersionModal _changeRemoteVersionModal;
+    private ShareProjectModal _shareProjectModal;
 
     private string _openingProject = "";
 
@@ -42,6 +43,8 @@ public class ProjectsTab
         _createProjectModal = new CreateProjectModal(_config, _apiClient, FetchProjectsForActiveServer);
         
         _changeRemoteVersionModal = new ChangeRemoteVersionModal(_config, _apiClient, FetchProjectsForActiveServer);
+        
+        _shareProjectModal = new ShareProjectModal(_config, _apiClient, FetchProjectsForActiveServer);
     }
 
     public void Draw()
@@ -103,6 +106,7 @@ public class ProjectsTab
         _addServerModal.Draw();
         _createProjectModal.Draw();
         _changeRemoteVersionModal.Draw();
+        _shareProjectModal.Draw();
     }
 
     private void DrawRemoteProjects()
@@ -166,6 +170,10 @@ public class ProjectsTab
                     if (ImGui.Selectable("Edit Version"))
                     {
                         _changeRemoteVersionModal.Open(_activeServer, proj);
+                    }
+                    if (ImGui.Selectable("Share Project..."))
+                    {
+                        _shareProjectModal.Open(_activeServer, proj);
                     }
                     ImGui.EndPopup();
                 }

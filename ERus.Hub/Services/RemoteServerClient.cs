@@ -155,4 +155,39 @@ public class RemoteServerClient
             return (false, $"Network Error: {ex.Message}");
         }
     }
+    public async Task<(bool Success, string Error)> ShareProjectAsync(SavedServer server, string projectId, string targetUsername)
+    {
+        try
+        {
+            var payload = new { Id = projectId, Username = targetUsername };
+            var json = JsonSerializer.Serialize(payload);
+            var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+
+            _httpClient.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", server.Token);
+            var response = await _httpClient.PostAsync($"http://{server.Ip}:8080/api/projects/share", content);
+
+            if (response.IsSuccessStatusCode)
+            {
+                return (true, "");
+            }
+            else
+            {
+                string responseBody = await response.Content.ReadAsStringAsync();
+                try
+                {
+                    var errResult = JsonSerializer.Deserialize<JsonElement>(responseBody);
+                    if (errResult.TryGetProperty("error", out var errProp))
+                    {
+                        return (false, errProp.GetString() ?? "Unknown error.");
+                    }
+                }
+                catch { }
+                return (false, "Failed to share project.");
+            }
+        }
+        catch (Exception ex)
+        {
+            return (false, $"Network Error: {ex.Message}");
+        }
+    }
 }

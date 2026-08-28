@@ -26,6 +26,8 @@ public class NetworkManager
     }
 
     public bool IsHost => Transport.IsHost;
+    public bool IsClient => Transport.IsClient;
+    public bool IsConnected => Transport.IsConnected;
     public int MyUserId => Transport.MyUserId;
     public int ConnectedPeersCount => Transport.ConnectedPeersCount;
 

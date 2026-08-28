@@ -20,6 +20,12 @@ public class EntityReplicationSystem : BaseSystem
     private readonly ERus.Engine.Core.Engine _engine;
     private readonly NetworkIdentityMap _identityMap;
 
+    /// <summary>
+    /// Taxa de replicação de pacotes de estado por segundo (Hz). Padrão: 30Hz.
+    /// </summary>
+    public float TickRate { get; set; } = 30f;
+
+    private double _tickAccumulator = 0.0;
     private uint _currentTick = 0;
     private Dictionary<int, uint> _lastEntityTicks = new Dictionary<int, uint>();
     private ConcurrentQueue<(string hash, string path)> _completedDownloads = new();
@@ -78,8 +84,16 @@ public class EntityReplicationSystem : BaseSystem
             }
         }
 
-        // Broadcaster de Movimentação (Dirty Flags)
-        if (_transport.IsHost)
+        _tickAccumulator += deltaTime;
+        double tickInterval = 1.0 / System.Math.Max(1.0, TickRate);
+        bool shouldBroadcastTick = _tickAccumulator >= tickInterval;
+        if (shouldBroadcastTick)
+        {
+            _tickAccumulator %= tickInterval;
+        }
+
+        // Broadcaster de Movimentação (Dirty Flags desacoplado para taxa fixa)
+        if (_transport.IsHost && shouldBroadcastTick)
         {
             foreach (var entity in Registry.GetLivingEntities())
             {
@@ -96,8 +110,7 @@ public class EntityReplicationSystem : BaseSystem
             }
         }
 
-        // Interpolador de Movimento (Anti-Jitter)
-        float lerpSpeed = 15f;
+        // Interpolador de Movimento (Anti-Jitter com velocidade adaptativa)
         foreach (var entity in Registry.GetLivingEntities())
         {
             if (Registry.HasComponent<TransformComponent>(entity) && Registry.HasComponent<NetworkInterpolationComponent>(entity))
@@ -105,22 +118,34 @@ public class EntityReplicationSystem : BaseSystem
                 ref var t = ref Registry.GetComponent<TransformComponent>(entity);
                 ref var interp = ref Registry.GetComponent<NetworkInterpolationComponent>(entity);
                 
+                float lerpSpeed = interp.InterpolationSpeed > 0 ? interp.InterpolationSpeed : 18f;
                 bool changed = false;
                 if (interp.HasTargetPosition)
                 {
-                    t.Position += (interp.TargetPosition - t.Position) * ((float)deltaTime * lerpSpeed);
-                    if ((interp.TargetPosition - t.Position).Length < 0.005f)
+                    var delta = interp.TargetPosition - t.Position;
+                    float dist = delta.Length;
+                    if (dist > 15.0f) // Teleporte caso a discrepância seja muito grande
                     {
                         t.Position = interp.TargetPosition;
                         interp.HasTargetPosition = false;
+                    }
+                    else
+                    {
+                        t.Position += delta * System.MathF.Min(1.0f, (float)deltaTime * lerpSpeed);
+                        if (dist < 0.005f)
+                        {
+                            t.Position = interp.TargetPosition;
+                            interp.HasTargetPosition = false;
+                        }
                     }
                     changed = true;
                 }
                 
                 if (interp.HasTargetRotation)
                 {
-                    t.Rotation += (interp.TargetRotation - t.Rotation) * ((float)deltaTime * lerpSpeed);
-                    if ((interp.TargetRotation - t.Rotation).Length < 0.005f)
+                    var deltaRot = interp.TargetRotation - t.Rotation;
+                    t.Rotation += deltaRot * System.MathF.Min(1.0f, (float)deltaTime * lerpSpeed);
+                    if (deltaRot.Length < 0.005f)
                     {
                         t.Rotation = interp.TargetRotation;
                         interp.HasTargetRotation = false;
@@ -130,8 +155,9 @@ public class EntityReplicationSystem : BaseSystem
                 
                 if (interp.HasTargetScale)
                 {
-                    t.Scale += (interp.TargetScale - t.Scale) * ((float)deltaTime * lerpSpeed);
-                    if ((interp.TargetScale - t.Scale).Length < 0.005f)
+                    var deltaScale = interp.TargetScale - t.Scale;
+                    t.Scale += deltaScale * System.MathF.Min(1.0f, (float)deltaTime * lerpSpeed);
+                    if (deltaScale.Length < 0.005f)
                     {
                         t.Scale = interp.TargetScale;
                         interp.HasTargetScale = false;
@@ -403,6 +429,44 @@ public class EntityReplicationSystem : BaseSystem
                     Registry.GetComponent<ScriptComponent>(entity) = sc;
                 else
                     Registry.AddComponent(entity, sc);
+            }
+        });
+
+        _dispatcher.SubscribeReusable<ScriptRpcPacket>((packet, peer) =>
+        {
+            if (_identityMap.TryGetEntity(packet.NetworkId, out var entity))
+            {
+                var scriptExec = _engine.GetModule<ERus.Engine.Modules.ECSModule>()?.GetSystem<ERus.Engine.ECS.ScriptExecutionSystem>();
+                if (scriptExec != null)
+                {
+                    scriptExec.ExecuteRpcOnEntity(entity, packet.ScriptTypeName, packet.MethodName, packet.Arguments);
+                }
+            }
+
+            if (_transport.IsHost)
+            {
+                // Se for um ClientRpc retransmitido, propaga para todos os outros peers
+                if (!packet.IsServerRpc)
+                {
+                    _dispatcher.SendToAllExcept(packet, peer, DeliveryMethod.ReliableOrdered);
+                }
+            }
+        });
+
+        _dispatcher.SubscribeReusable<ScriptSyncVarPacket>((packet, peer) =>
+        {
+            if (_identityMap.TryGetEntity(packet.NetworkId, out var entity))
+            {
+                var scriptExec = _engine.GetModule<ERus.Engine.Modules.ECSModule>()?.GetSystem<ERus.Engine.ECS.ScriptExecutionSystem>();
+                if (scriptExec != null)
+                {
+                    scriptExec.ApplySyncVarOnEntity(entity, packet.ScriptTypeName, packet.FieldName, packet.Value);
+                }
+            }
+
+            if (_transport.IsHost)
+            {
+                _dispatcher.SendToAllExcept(packet, peer, DeliveryMethod.ReliableOrdered);
             }
         });
 

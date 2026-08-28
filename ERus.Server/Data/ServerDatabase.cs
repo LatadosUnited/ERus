@@ -15,6 +15,8 @@ public class UserAccount
     public string PasswordHash { get; set; } = string.Empty;
     public string Token { get; set; } = string.Empty;
     public List<RemoteProjectData> Projects { get; set; } = new List<RemoteProjectData>();
+    [System.Text.Json.Serialization.JsonIgnore]
+    public List<RemoteProjectData> SharedProjects { get; set; } = new List<RemoteProjectData>();
 }
 
 public class RemoteProjectData
@@ -29,6 +31,9 @@ public class RemoteProjectData
     
     [System.Text.Json.Serialization.JsonIgnore]
     public UserAccount Owner { get; set; } = null!;
+    
+    [System.Text.Json.Serialization.JsonIgnore]
+    public List<UserAccount> Collaborators { get; set; } = new List<UserAccount>();
 }
 
 public static class ServerDatabase
@@ -110,7 +115,7 @@ public static class ServerDatabase
         lock (_lock)
         {
             using var db = new AppDbContext();
-            return db.Accounts.Include(a => a.Projects).FirstOrDefault(a => a.Token == token);
+            return db.Accounts.Include(a => a.Projects).Include(a => a.SharedProjects).FirstOrDefault(a => a.Token == token);
         }
     }
 
@@ -162,10 +167,35 @@ public static class ServerDatabase
         lock (_lock)
         {
             using var db = new AppDbContext();
+            var account = db.Accounts.Include(a => a.Projects).Include(a => a.SharedProjects).FirstOrDefault(a => a.Token == token);
+            if (account == null) return false;
+
+            return account.Projects.Any(p => p.Id == projectId) || account.SharedProjects.Any(p => p.Id == projectId);
+        }
+    }
+
+    public static bool AddCollaborator(string token, string projectId, string collaboratorUsername)
+    {
+        lock (_lock)
+        {
+            using var db = new AppDbContext();
+            // Validate owner
             var account = db.Accounts.Include(a => a.Projects).FirstOrDefault(a => a.Token == token);
             if (account == null) return false;
 
-            return account.Projects.Any(p => p.Id == projectId);
+            var project = account.Projects.FirstOrDefault(p => p.Id == projectId);
+            if (project == null) return false; // Must be owner to share
+
+            var collabAccount = db.Accounts.FirstOrDefault(a => a.Username.ToLower() == collaboratorUsername.ToLower());
+            if (collabAccount == null) return false;
+
+            var pToUpdate = db.Projects.Include(p => p.Collaborators).FirstOrDefault(p => p.Id == projectId);
+            if (pToUpdate != null && !pToUpdate.Collaborators.Any(c => c.Id == collabAccount.Id))
+            {
+                pToUpdate.Collaborators.Add(collabAccount);
+                db.SaveChanges();
+            }
+            return true;
         }
     }
 }

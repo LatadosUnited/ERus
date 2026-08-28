@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using System.Linq;
 using ERus.Server.Data;
 
 namespace ERus.Server;
@@ -89,6 +90,10 @@ public class HttpServer
             {
                 await HandleCreateProjectAsync(request, response);
             }
+            else if (request.HttpMethod == "POST" && request.Url?.AbsolutePath == "/api/projects/share")
+            {
+                await HandleShareProjectAsync(request, response);
+            }
             else if (request.HttpMethod == "PUT" && request.Url?.AbsolutePath == "/api/projects")
             {
                 await HandleUpdateProjectAsync(request, response);
@@ -143,7 +148,7 @@ public class HttpServer
             success = true,
             token = token,
             username = data.Username,
-            projects = account?.Projects ?? new List<RemoteProjectData>()
+            projects = (account?.Projects ?? new List<RemoteProjectData>()).Concat(account?.SharedProjects ?? new List<RemoteProjectData>()).DistinctBy(p => p.Id).ToList()
         });
     }
 
@@ -176,7 +181,7 @@ public class HttpServer
             success = true,
             token = token,
             username = loginData.Username,
-            projects = account?.Projects ?? new List<RemoteProjectData>()
+            projects = (account?.Projects ?? new List<RemoteProjectData>()).Concat(account?.SharedProjects ?? new List<RemoteProjectData>()).DistinctBy(p => p.Id).ToList()
         };
 
         Console.WriteLine($"[API] Login aprovado para: {loginData.Username}");
@@ -206,7 +211,7 @@ public class HttpServer
         }
 
         response.StatusCode = 200;
-        await SendJsonResponse(response, new { success = true, projects = account.Projects });
+        await SendJsonResponse(response, new { success = true, projects = account.Projects.Concat(account.SharedProjects).DistinctBy(p => p.Id).ToList() });
     }
 
     private async Task HandleCreateProjectAsync(HttpListenerRequest request, HttpListenerResponse response)
@@ -299,6 +304,43 @@ public class HttpServer
         await SendJsonResponse(response, new { success = true, project = updatedProject });
     }
 
+    private async Task HandleShareProjectAsync(HttpListenerRequest request, HttpListenerResponse response)
+    {
+        string authHeader = request.Headers["Authorization"] ?? "";
+        if (string.IsNullOrWhiteSpace(authHeader) || !authHeader.StartsWith("Bearer "))
+        {
+            response.StatusCode = 401;
+            await SendJsonResponse(response, new { error = "Unauthorized" });
+            return;
+        }
+
+        string token = authHeader.Substring("Bearer ".Length);
+        
+        using var reader = new StreamReader(request.InputStream, request.ContentEncoding ?? Encoding.UTF8);
+        string body = await reader.ReadToEndAsync();
+        var data = JsonSerializer.Deserialize<ShareProjectRequest>(body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        if (data == null || string.IsNullOrWhiteSpace(data.Id) || string.IsNullOrWhiteSpace(data.Username))
+        {
+            response.StatusCode = 400;
+            await SendJsonResponse(response, new { error = "ID do Projeto e Username alvo são obrigatórios." });
+            return;
+        }
+
+        bool success = ServerDatabase.AddCollaborator(token, data.Id, data.Username);
+        if (!success)
+        {
+            response.StatusCode = 400;
+            await SendJsonResponse(response, new { error = "Falha ao compartilhar. Verifique se você é o dono e se o usuário existe." });
+            return;
+        }
+
+        Console.WriteLine($"[API] Projeto '{data.Id}' compartilhado com {data.Username}");
+
+        response.StatusCode = 200;
+        await SendJsonResponse(response, new { success = true });
+    }
+
     private async Task SendJsonResponse(HttpListenerResponse response, object data)
     {
         response.ContentType = "application/json";
@@ -326,4 +368,10 @@ public class UpdateProjectRequest
 {
     public string Id { get; set; } = string.Empty;
     public string EngineVersion { get; set; } = string.Empty;
+}
+
+public class ShareProjectRequest
+{
+    public string Id { get; set; } = string.Empty;
+    public string Username { get; set; } = string.Empty;
 }

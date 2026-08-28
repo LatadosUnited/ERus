@@ -55,13 +55,16 @@ Compress-Archive -Path "ERus.Editor\bin\Release\net10.0\win-x64\publish\*" -Dest
 ```
 
 ### 3. Git Tag and Push
-Commit any pending changes, create a new tag with the version number, and push to GitHub.
+Commit any pending changes (ensuring the massive `.zip` files are NOT committed), create a new tag with the version number, and push to GitHub.
 
 ```powershell
+# Ensure zip files are ignored to prevent GH001 Large Files error
+echo "*.zip" >> .gitignore
+
 git add .
 git commit -m "Release vX.Y.Z"
 git tag vX.Y.Z
-git push origin main --tags
+git push origin master --tags
 ```
 
 ### 4. Provide GitHub Release Command to the User

@@ -10,6 +10,8 @@ public class NetworkTransport : INetEventListener
     private NetManager? _netManager;
 
     public bool IsHost { get; private set; }
+    public bool IsClient => _netManager != null && _netManager.IsRunning && !IsHost;
+    public bool IsConnected => _netManager != null && _netManager.IsRunning && (IsHost ? true : _netManager.FirstPeer?.ConnectionState == ConnectionState.Connected);
     public int MyUserId { get; private set; }
     public int ConnectedPeersCount => _netManager?.ConnectedPeersCount ?? 0;
 

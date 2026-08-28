@@ -264,6 +264,90 @@ public class ScriptExecutionSystem : BaseSystem, IDisposable
         }
     }
 
+    /// <summary>
+    /// Retorna a instância ativa de um script para a entidade especificada.
+    /// </summary>
+    public ERusScript? GetScriptInstance(Entity entity, string scriptTypeName)
+    {
+        if (_entityScriptsMap.TryGetValue(entity.Id, out var scripts))
+        {
+            return scripts.FirstOrDefault(s => s.GetType().Name == scriptTypeName || s.GetType().FullName == scriptTypeName);
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Executa uma chamada RPC em uma entidade ativa.
+    /// </summary>
+    public void ExecuteRpcOnEntity(Entity entity, string scriptTypeName, string methodName, string[] args)
+    {
+        var script = GetScriptInstance(entity, scriptTypeName);
+        if (script != null)
+        {
+            script.ExecuteRpcLocal(methodName, args);
+        }
+        else
+        {
+            ConsoleLog.Warn($"[Rede] Script '{scriptTypeName}' não encontrado na entidade #{entity.Id} para executar RPC '{methodName}'.");
+        }
+    }
+
+    /// <summary>
+    /// Aplica a atualização de um [SyncVar] na instância do script da entidade.
+    /// </summary>
+    public void ApplySyncVarOnEntity(Entity entity, string scriptTypeName, string fieldName, string value)
+    {
+        var script = GetScriptInstance(entity, scriptTypeName);
+        if (script == null) return;
+
+        var type = script.GetType();
+        var field = type.GetField(fieldName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        var prop = type.GetProperty(fieldName, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+
+        Type? targetType = field?.FieldType ?? prop?.PropertyType;
+        if (targetType == null) return;
+
+        object? converted = null;
+        try
+        {
+            if (targetType == typeof(string)) converted = value;
+            else if (targetType == typeof(int) && int.TryParse(value, out int i)) converted = i;
+            else if (targetType == typeof(float) && float.TryParse(value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out float f)) converted = f;
+            else if (targetType == typeof(bool) && bool.TryParse(value, out bool b)) converted = b;
+            else if (targetType == typeof(double) && double.TryParse(value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double d)) converted = d;
+
+            if (converted != null)
+            {
+                if (field != null) field.SetValue(script, converted);
+                else prop?.SetValue(script, converted);
+
+                var syncAttr = (field?.GetCustomAttributes(typeof(ERus.Engine.Network.Attributes.SyncVarAttribute), true).FirstOrDefault()
+                             ?? prop?.GetCustomAttributes(typeof(ERus.Engine.Network.Attributes.SyncVarAttribute), true).FirstOrDefault()) as ERus.Engine.Network.Attributes.SyncVarAttribute;
+
+                if (!string.IsNullOrEmpty(syncAttr?.Hook))
+                {
+                    var hookMethod = type.GetMethod(syncAttr.Hook, System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    if (hookMethod != null)
+                    {
+                        var hookParams = hookMethod.GetParameters();
+                        if (hookParams.Length == 1)
+                        {
+                            hookMethod.Invoke(script, new object?[] { converted });
+                        }
+                        else if (hookParams.Length == 0)
+                        {
+                            hookMethod.Invoke(script, null);
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ConsoleLog.Error($"[Rede] Erro ao aplicar SyncVar '{fieldName}' no script '{scriptTypeName}': {ex.Message}");
+        }
+    }
+
     private void DestroyAllScripts()
     {
         for (int i = 0; i < _activeScripts.Count; i++)

@@ -33,5 +33,10 @@ public class AppDbContext : DbContext
             .WithMany(u => u.Projects)
             .HasForeignKey(p => p.OwnerId)
             .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder.Entity<RemoteProjectData>()
+            .HasMany(p => p.Collaborators)
+            .WithMany(u => u.SharedProjects)
+            .UsingEntity(j => j.ToTable("ProjectCollaborators"));
     }
 }
