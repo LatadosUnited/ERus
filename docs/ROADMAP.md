@@ -12,7 +12,7 @@ timeline
     section 2026
         v0.5.21 (Concluído) : Co-edição ao vivo : Hub Remote Sharing : Server Health Monitor
         v0.5.30 (Concluído) : Materiais, Texturas & Sprites 2D : Drag & Drop de Imagens : PBR Básico : Asset GUID
-        v0.5.35 : Segurança de Sessão : Token de Handshake : Limpeza de Locks Órfãos
+        v0.5.35 (Concluído) : Segurança de Sessão : Token de Handshake : Limpeza de Locks Órfãos
         v0.5.40 : Canvas 2D & UI de Gameplay : UIImage, UIText, UIButton : Âncoras
         v0.5.50 : Iluminação, Sombras & Ambiente : Render Passes : Luzes, Shadow Mapping, Neblina 3D : Profiler Mínimo
         v0.5.55 : Prefabs, Scene Management & Componentes : CharacterController, LoadScene, Billboard
@@ -57,11 +57,10 @@ timeline
 
 ---
 
-### 🔐 **v0.5.35: Segurança de Sessão & Locks Órfãos**
-*(desmembrado de v0.6.00 — a superfície de ataque já está aberta desde que o Hub Remote Sharing entrou em v0.5.21; adiar por oito marcos não é aceitável)*
-- 🔑 **Token de Handshake:** substituição da chave global fixa `"ERusKeys"` (`NetworkTransport.InitializeAsClient` / `OnConnectionRequest`) por token de sessão temporário ou senha de projeto, fechando a porta para conexões não autorizadas e comandos de destruição arbitrários.
-- 🔓 **Liberação Automática de Locks Órfãos:** no evento `OnPeerDisconnected`, o Host destrava e limpa todas as entidades bloqueadas (`LockUserId`) pelo usuário que caiu. Hoje um cliente que perde a conexão trava a edição daquela entidade para todos os demais até o fim da sessão.
-- 🧪 **Teste de Regressão:** cenário automatizado de cliente derrubado no meio de um lock, validando que a entidade volta a ser editável.
+### 🟢 **v0.5.35: Segurança de Sessão & Locks Órfãos** *(concluído)*
+- ✅ **Token de Handshake:** substituição da chave global fixa `"ERusKeys"` (`NetworkTransport.InitializeAsClient` / `OnConnectionRequest`) por token de sessão dinâmico configurável e validação por projeto, rejeitando conexões não autorizadas.
+- ✅ **Liberação Automática de Locks Órfãos:** no evento `OnPeerDisconnected`, o Host destrava e limpa todas as entidades bloqueadas (`LockUserId`) pelo usuário que caiu, disparando `UnlockPacket` para que as entidades voltem a ser editáveis imediatamente por todos.
+- ✅ **Teste de Regressão:** cenários automatizados cobrindo rejeição de token inválido, conexão com token válido e limpeza de locks órfãos em `SessionSecurityAndOrphanLockTests.cs`.
 
 > Os itens restantes de rede (host migration, reconexão automática, RTT) permanecem em **v0.6.00** — este marco cobre apenas o que já é explorável hoje.
 

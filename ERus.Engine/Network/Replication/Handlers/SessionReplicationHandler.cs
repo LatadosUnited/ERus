@@ -76,6 +76,7 @@ public sealed class SessionReplicationHandler : IReplicationHandler
     {
         ctx.RegisterHandler<UserPresencePacket>((packet, peer) =>
         {
+            ctx.Transport.RegisterPeerUser(peer.Id, packet.UserId);
             ctx.Network?.NetworkManager?.Presence.UpdatePresence(packet);
             if (ctx.IsHost) ctx.RelayToOthers(packet, peer);
         });

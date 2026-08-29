@@ -58,13 +58,13 @@ public class NetworkModule : IEngineModule
         }
     }
 
-    public void StartHost(int port)
+    public void StartHost(int port, string sessionToken = "")
     {
         NetworkManager.Stop();
         
         try
         {
-            NetworkManager.InitializeAsHost(port);
+            NetworkManager.InitializeAsHost(port, -1, sessionToken);
             ConsoleLog.Log($"[Rede] Host iniciado na porta {port}.");
 
             var ecs = _engine.GetModule<ECSModule>();
@@ -91,13 +91,13 @@ public class NetworkModule : IEngineModule
         }
     }
 
-    public void StartServer(int port)
+    public void StartServer(int port, string sessionToken = "")
     {
         NetworkManager.Stop();
         
         try
         {
-            NetworkManager.InitializeAsServer(port);
+            NetworkManager.InitializeAsServer(port, -1, sessionToken);
             ConsoleLog.Log($"[Rede] Servidor Dedicado iniciado na porta {port}.");
 
             var ecs = _engine.GetModule<ECSModule>();
@@ -124,13 +124,13 @@ public class NetworkModule : IEngineModule
         }
     }
 
-    public void StartClient(string ip, int port)
+    public void StartClient(string ip, int port, string sessionToken = "")
     {
         NetworkManager.Stop();
         
         try
         {
-            NetworkManager.InitializeAsClient(ip, port);
+            NetworkManager.InitializeAsClient(ip, port, -1, sessionToken);
             ConsoleLog.Log($"[Rede] Cliente tentando conectar em {ip}:{port}.");
             
             var ecs = _engine.GetModule<ECSModule>();
@@ -181,7 +181,7 @@ public class NetworkModule : IEngineModule
                 }
             });
 
-            NetworkManager.InitializeAsClient(ip, port);
+            NetworkManager.InitializeAsClient(ip, port, -1, token);
             ConsoleLog.Log($"[Rede] Cliente tentando conectar em {ip}:{port} para abrir o projeto {projectId}...");
             
             var ecs = _engine.GetModule<ECSModule>();

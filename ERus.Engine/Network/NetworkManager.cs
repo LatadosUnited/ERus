@@ -4,11 +4,16 @@ using ERus.Engine.Network.Core;
 using ERus.Engine.Network.Replication;
 using ERus.Engine.Network.Packets.Assets;
 using ERus.Engine.Network.Collaboration;
+using ERus.Engine.Modules;
+using ERus.Engine.ECS;
+using ERus.Engine.Scripting;
 
 namespace ERus.Engine.Network;
 
 public class NetworkManager
 {
+    private readonly ERus.Engine.Core.Engine _engine;
+
     public NetworkTransport Transport { get; }
     public NetworkPacketDispatcher Dispatcher { get; }
     public AssetSyncManager AssetSync { get; }
@@ -19,6 +24,7 @@ public class NetworkManager
 
     public NetworkManager(ERus.Engine.Core.Engine engine)
     {
+        _engine = engine;
         Transport = new NetworkTransport();
         Dispatcher = new NetworkPacketDispatcher(Transport);
         AssetSync = new AssetSyncManager(this);
@@ -29,7 +35,13 @@ public class NetworkManager
         
         Transport.OnPeerDisconnectedEvent += (peer, info) =>
         {
-            Presence.RemoveCollaborator(peer.Id);
+            int disconnectedUserId = Transport.GetUserIdForPeer(peer.Id);
+            Presence.RemoveCollaborator(disconnectedUserId);
+
+            if (Transport.IsHost)
+            {
+                ReleaseOrphanLocks(disconnectedUserId);
+            }
         };
     }
 
@@ -39,25 +51,49 @@ public class NetworkManager
     public int MyUserId => Transport.MyUserId;
     public int ConnectedPeersCount => Transport.ConnectedPeersCount;
 
-    public void InitializeAsHost(int port, int tcpPort = -1) 
+    public void InitializeAsHost(int port, int tcpPort = -1, string sessionToken = "") 
     {
         int finalTcpPort = tcpPort == -1 ? port + 1 : tcpPort;
-        Transport.InitializeAsHost(port);
+        Transport.InitializeAsHost(port, sessionToken);
         AssetSync.StartServer(finalTcpPort);
     }
 
-    public void InitializeAsServer(int port, int tcpPort = -1) 
+    public void InitializeAsServer(int port, int tcpPort = -1, string sessionToken = "") 
     {
         int finalTcpPort = tcpPort == -1 ? port + 1 : tcpPort;
-        Transport.InitializeAsServer(port);
+        Transport.InitializeAsServer(port, sessionToken);
         AssetSync.StartServer(finalTcpPort);
     }
 
-    public void InitializeAsClient(string ip, int port, int tcpPort = -1) 
+    public void InitializeAsClient(string ip, int port, int tcpPort = -1, string sessionToken = "") 
     {
         int finalTcpPort = tcpPort == -1 ? port + 1 : tcpPort;
-        Transport.InitializeAsClient(ip, port);
+        Transport.InitializeAsClient(ip, port, sessionToken);
         AssetSync.SetupClient(ip, finalTcpPort);
+    }
+
+    public void ReleaseOrphanLocks(int disconnectedUserId)
+    {
+        var ecs = _engine.GetModule<ECSModule>();
+        if (ecs == null) return;
+
+        var registry = ecs.ActiveScene.Registry;
+        var replication = ecs.GetSystem<EntityReplicationSystem>();
+        var living = registry.GetLivingEntities();
+
+        foreach (var entity in living)
+        {
+            if (!registry.HasComponent<NetworkIdentityComponent>(entity)) continue;
+
+            ref var identity = ref registry.GetComponent<NetworkIdentityComponent>(entity);
+            if (identity.LockUserId == disconnectedUserId)
+            {
+                int netId = identity.NetworkId;
+                identity.LockUserId = -1;
+                replication?.SendUnlock(netId);
+                ConsoleLog.Log($"[Rede] Lock órfão liberado automaticamente para entidade #{netId} (usuário #{disconnectedUserId} desconectou).");
+            }
+        }
     }
 
     public void PollEvents() => Transport.PollEvents();
