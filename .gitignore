@@ -506,3 +506,6 @@ TempJitterTest/
 *.zip
  
  
+
+# Saída de publish e pacotes de release
+dist/
