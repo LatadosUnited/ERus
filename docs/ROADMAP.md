@@ -48,6 +48,7 @@ timeline
 
 ### 🟢 **v0.5.30: Materiais, Texturas & Sprites 2D** *(concluído)*
 - ✅ **`MaterialComponent` no Inspector:** Cor Base (Color Tint), slot de Albedo Texture, Tiling e Offset, Metallic, Roughness e Alpha Cutoff com `MaterialDrawer` modular e suporte a Undo/Redo.
+- ✅ **PBR Básico no Renderer:** Metallic e Roughness alimentam o `PrimitivePass` via `SurfaceParams`, com especular Blinn-Phong derivado da rugosidade e refletância que migra do difuso para o metal. Modelo de iluminação completo (múltiplas luzes, IBL) fica em **v0.5.50**.
 - ✅ **Drag-and-Drop de Imagens:** Arrastar arquivos `.png`/`.jpg` da janela *Project* diretamente para slots de material, Hierarchy e viewport 3D (geração de Sprite/Quad).
 - ✅ **Miniaturas e Preview:** Visualização em Grade (Grid/Tiles) e Lista com miniaturas de imagens, slider de zoom (48px a 128px), barra de busca e ícones temáticos por tipo de arquivo no *ProjectWindow*.
 - ✅ **Sincronização de Texturas:** Replicação automática de novos arquivos de imagem para parceiros conectados na rede via TCP (`AssetSync` + anúncio de hash).
@@ -58,9 +59,12 @@ timeline
 ---
 
 ### 🟢 **v0.5.35: Segurança de Sessão & Locks Órfãos** *(concluído)*
-- ✅ **Token de Handshake:** substituição da chave global fixa `"ERusKeys"` (`NetworkTransport.InitializeAsClient` / `OnConnectionRequest`) por token de sessão dinâmico configurável e validação por projeto, rejeitando conexões não autorizadas.
+- ✅ **Token de Handshake:** substituição da chave global fixa `"ERusKeys"` por token de sessão dinâmico validado em `OnConnectionRequest`, com rejeição registrada em log.
+- ✅ **Token Configurável pelo Usuário:** campo *Session Token* (mascarado) no menu *Network* do editor, alimentando `StartHost` e `StartClient`; o servidor dedicado lê o token de `--session-token` ou de `ERUS_SESSION_TOKEN` e avisa em log quando roda sem token.
+- ✅ **Separação de Segredos:** o token de handshake do transporte e a credencial do Hub (`AuthRequestPacket`) são parâmetros distintos em `StartClientWithAuth` — antes a credencial do Hub era usada como chave de conexão e nunca bateria com a do servidor.
 - ✅ **Liberação Automática de Locks Órfãos:** no evento `OnPeerDisconnected`, o Host destrava e limpa todas as entidades bloqueadas (`LockUserId`) pelo usuário que caiu, disparando `UnlockPacket` para que as entidades voltem a ser editáveis imediatamente por todos.
-- ✅ **Teste de Regressão:** cenários automatizados cobrindo rejeição de token inválido, conexão com token válido e limpeza de locks órfãos em `SessionSecurityAndOrphanLockTests.cs`.
+- ✅ **Resolução Confiável de Peer → Usuário:** o mapa é preenchido tanto por `UserPresencePacket` quanto por `LockPacket`, e um peer não identificado devolve `UnknownUserId` em vez do id de peer — que poderia colidir por acidente com o `LockUserId` de outro colaborador e destravar a entidade errada.
+- ✅ **Teste de Regressão:** cenários automatizados cobrindo rejeição de token inválido, conexão com token válido, limpeza de locks órfãos e o caminho completo de queda de cliente durante um lock (`OnPeerDisconnected` real) em `SessionSecurityAndOrphanLockTests.cs`.
 
 > Os itens restantes de rede (host migration, reconexão automática, RTT) permanecem em **v0.6.00** — este marco cobre apenas o que já é explorável hoje.
 

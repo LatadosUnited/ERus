@@ -36,6 +36,8 @@ public class NetworkManager
         Transport.OnPeerDisconnectedEvent += (peer, info) =>
         {
             int disconnectedUserId = Transport.GetUserIdForPeer(peer.Id);
+            if (disconnectedUserId == NetworkTransport.UnknownUserId) return;
+
             Presence.RemoveCollaborator(disconnectedUserId);
 
             if (Transport.IsHost)
@@ -72,8 +74,15 @@ public class NetworkManager
         AssetSync.SetupClient(ip, finalTcpPort);
     }
 
+    /// <summary>
+    /// Destrava tudo o que o usuário caído mantinha bloqueado. Sem isto, a entidade fica
+    /// ineditável para os demais até o fim da sessão.
+    /// </summary>
     public void ReleaseOrphanLocks(int disconnectedUserId)
     {
+        // -1 é "sem dono": liberar por esse valor destravaria a cena inteira.
+        if (disconnectedUserId == -1 || disconnectedUserId == NetworkTransport.UnknownUserId) return;
+
         var ecs = _engine.GetModule<ECSModule>();
         if (ecs == null) return;
 

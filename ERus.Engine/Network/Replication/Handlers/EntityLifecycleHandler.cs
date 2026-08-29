@@ -93,7 +93,13 @@ public sealed class EntityLifecycleHandler : IReplicationHandler
 
     private static void RegisterLocks(ReplicationContext ctx)
     {
-        ctx.RegisterRelayed<LockPacket>((packet, peer) => SetLockOwner(ctx, packet.NetworkId, packet.UserId));
+        ctx.RegisterRelayed<LockPacket>((packet, peer) =>
+        {
+            // Amarra peer -> usuário já no lock: se o colaborador cair antes de anunciar
+            // presença, o Host ainda sabe de quem são os locks a liberar.
+            ctx.Transport.RegisterPeerUser(peer.Id, packet.UserId);
+            SetLockOwner(ctx, packet.NetworkId, packet.UserId);
+        });
         ctx.RegisterRelayed<UnlockPacket>((packet, peer) => SetLockOwner(ctx, packet.NetworkId, -1));
     }
 

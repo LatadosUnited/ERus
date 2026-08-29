@@ -10,6 +10,13 @@ public class NetworkTransport : INetEventListener
 {
     public const string DefaultSessionToken = "ERusDefaultSession";
 
+    /// <summary>
+    /// Devolvido quando o peer caiu antes de revelar seu User ID. Nunca corresponde a um
+    /// dono de lock real — o id de peer não pode servir de palpite aqui, porque bateria
+    /// por acidente com o <c>LockUserId</c> de outro colaborador.
+    /// </summary>
+    public const int UnknownUserId = int.MinValue;
+
     private NetManager? _netManager;
     private readonly ConcurrentDictionary<int, int> _peerIdToUserId = new();
 
@@ -66,7 +73,7 @@ public class NetworkTransport : INetEventListener
 
     public int GetUserIdForPeer(int peerId)
     {
-        return _peerIdToUserId.TryGetValue(peerId, out int userId) ? userId : peerId;
+        return _peerIdToUserId.TryGetValue(peerId, out int userId) ? userId : UnknownUserId;
     }
 
     public void UnregisterPeer(int peerId)

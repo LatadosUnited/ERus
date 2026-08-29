@@ -30,13 +30,15 @@ public class NetworkModule : IEngineModule
     private int _pendingConnectPort;
     private string? _pendingToken;
     private string? _pendingProjectId;
+    private string? _pendingSessionToken;
 
-    public void SetPendingRemoteConnection(string ip, int port, string token, string projectId)
+    public void SetPendingRemoteConnection(string ip, int port, string token, string projectId, string sessionToken = "")
     {
         _pendingConnectIp = ip;
         _pendingConnectPort = port;
         _pendingToken = token;
         _pendingProjectId = projectId;
+        _pendingSessionToken = sessionToken;
     }
 
     public void Initialize(Core.Engine engine)
@@ -54,7 +56,7 @@ public class NetworkModule : IEngineModule
 
         if (!string.IsNullOrEmpty(_pendingConnectIp))
         {
-            StartClientWithAuth(_pendingConnectIp, _pendingConnectPort, _pendingToken ?? "", _pendingProjectId ?? "");
+            StartClientWithAuth(_pendingConnectIp, _pendingConnectPort, _pendingToken ?? "", _pendingProjectId ?? "", _pendingSessionToken ?? "");
         }
     }
 
@@ -146,7 +148,13 @@ public class NetworkModule : IEngineModule
         }
     }
 
-    public void StartClientWithAuth(string ip, int port, string token, string projectId)
+    /// <summary>
+    /// Conecta a um servidor dedicado. São dois segredos distintos e não intercambiáveis:
+    /// <paramref name="sessionToken"/> é a chave de handshake do transporte (precisa bater
+    /// com a do servidor), e <paramref name="token"/> é a credencial do Hub, que só é
+    /// avaliada depois, via <c>AuthRequestPacket</c>.
+    /// </summary>
+    public void StartClientWithAuth(string ip, int port, string token, string projectId, string sessionToken = "")
     {
         NetworkManager.Stop();
         
@@ -181,7 +189,7 @@ public class NetworkModule : IEngineModule
                 }
             });
 
-            NetworkManager.InitializeAsClient(ip, port, -1, token);
+            NetworkManager.InitializeAsClient(ip, port, -1, sessionToken);
             ConsoleLog.Log($"[Rede] Cliente tentando conectar em {ip}:{port} para abrir o projeto {projectId}...");
             
             var ecs = _engine.GetModule<ECSModule>();

@@ -15,10 +15,15 @@ public readonly struct SurfaceParams
     public Vector2 Tiling { get; init; }
     public Vector2 Offset { get; init; }
     public float AlphaCutoff { get; init; }
+    public float Metallic { get; init; }
+    public float Roughness { get; init; }
     public Guid TextureGuid { get; init; }
 
     /// <summary>Cutoff mínimo do sprite, para que o fundo transparente não escreva no depth.</summary>
     private const float SpriteAlphaCutoff = 0.01f;
+
+    /// <summary>Superfície totalmente difusa: sem material, nada de especular.</summary>
+    private const float FullyDiffuseRoughness = 1.0f;
 
     public static SurfaceParams Default => new()
     {
@@ -26,6 +31,8 @@ public readonly struct SurfaceParams
         Tiling = Vector2.One,
         Offset = Vector2.Zero,
         AlphaCutoff = 0.0f,
+        Metallic = 0.0f,
+        Roughness = FullyDiffuseRoughness,
         TextureGuid = Guid.Empty
     };
 
@@ -44,6 +51,8 @@ public readonly struct SurfaceParams
                 Tiling = mat.Tiling,
                 Offset = mat.Offset,
                 AlphaCutoff = mat.AlphaCutoff,
+                Metallic = System.Math.Clamp(mat.Metallic, 0f, 1f),
+                Roughness = System.Math.Clamp(mat.Roughness, 0f, 1f),
                 TextureGuid = mat.AlbedoTextureGuid
             };
         }
@@ -58,6 +67,9 @@ public readonly struct SurfaceParams
                 Tiling = new Vector2(sprite.FlipX ? -1f : 1f, sprite.FlipY ? -1f : 1f),
                 Offset = new Vector2(sprite.FlipX ? 1f : 0f, sprite.FlipY ? 1f : 0f),
                 AlphaCutoff = SpriteAlphaCutoff,
+                // Sprite 2D não recebe brilho especular.
+                Metallic = 0.0f,
+                Roughness = FullyDiffuseRoughness,
                 TextureGuid = sprite.SpriteGuid
             };
         }

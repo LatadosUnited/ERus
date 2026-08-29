@@ -33,10 +33,22 @@ public sealed class PrimitivePass : IDisposable
         _shader.SetVector2("uTiling", surface.Tiling);
         _shader.SetVector2("uOffset", surface.Offset);
         _shader.SetFloat("uAlphaCutoff", surface.AlphaCutoff);
+        _shader.SetFloat("uMetallic", surface.Metallic);
+        _shader.SetFloat("uRoughness", surface.Roughness);
+        _shader.SetVector3("uViewPos", ExtractCameraPosition(view));
 
         BindAlbedo(surface.TextureGuid);
 
         _meshes.Draw(type);
+    }
+
+    /// <summary>
+    /// Posição da câmera em world space, necessária para o vetor de visão do especular.
+    /// A inversa da view devolve a matriz da câmera; sua translação é a posição.
+    /// </summary>
+    private static Vector3 ExtractCameraPosition(Matrix4x4 view)
+    {
+        return Matrix4x4.Invert(view, out var inverseView) ? inverseView.Translation : Vector3.Zero;
     }
 
     /// <summary>

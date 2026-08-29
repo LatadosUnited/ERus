@@ -6,7 +6,7 @@ namespace ERus.Engine.Graphics.Shaders;
 /// </summary>
 public static class ShaderSources
 {
-    /// <summary>Primitivas e sprites 2D: tiling/offset de UV, tint e alpha cutoff.</summary>
+    /// <summary>Primitivas e sprites 2D: tiling/offset de UV, tint, alpha cutoff e resposta metallic/roughness.</summary>
     public const string PrimitiveVertex = @"
         #version 330 core
         layout (location = 0) in vec3 aPosition;
@@ -43,6 +43,12 @@ public static class ShaderSources
         uniform vec4 uColorTint;
         uniform int uHasTexture;
         uniform float uAlphaCutoff;
+        uniform float uMetallic;
+        uniform float uRoughness;
+        uniform vec3 uViewPos;
+
+        // Refletância base de um dielétrico; o metal usa o próprio albedo como cor de reflexo.
+        const vec3 DielectricF0 = vec3(0.04);
 
         void main()
         {
@@ -60,9 +66,25 @@ public static class ShaderSources
 
             vec3 norm = normalize(Normal);
             vec3 lightDir = normalize(vec3(0.5, 1.0, 0.5));
+            vec3 viewDir = normalize(uViewPos - FragPos);
+            vec3 halfDir = normalize(lightDir + viewDir);
+
             float diff = max(dot(norm, lightDir), 0.35);
 
-            FragColor = vec4(finalColor.rgb * diff, finalColor.a);
+            // Metal não tem componente difusa própria: a energia migra para o especular.
+            vec3 diffuse = finalColor.rgb * diff * (1.0 - uMetallic);
+
+            // Rugosidade mapeada para expoente de Blinn-Phong (liso = lóbulo estreito).
+            float alpha = max(uRoughness * uRoughness, 0.002);
+            float shininess = 2.0 / (alpha * alpha) - 2.0;
+            float specAmount = pow(max(dot(norm, halfDir), 0.0), shininess);
+
+            // Superfície totalmente rugosa não gera destaque.
+            float specMask = 1.0 - uRoughness;
+            vec3 specColor = mix(DielectricF0, finalColor.rgb, uMetallic);
+            vec3 specular = specColor * specAmount * specMask;
+
+            FragColor = vec4(diffuse + specular, finalColor.a);
         }";
 
     /// <summary>Modelos importados via Assimp, com skinning por bones.</summary>

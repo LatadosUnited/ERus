@@ -22,12 +22,27 @@ class Program
         ServerDatabase.Initialize();
 
         string? projectId = null;
+        string? sessionToken = null;
         for (int i = 0; i < args.Length; i++)
         {
             if (args[i] == "--project" && i + 1 < args.Length)
             {
                 projectId = args[i + 1];
             }
+            else if (args[i] == "--session-token" && i + 1 < args.Length)
+            {
+                sessionToken = args[i + 1];
+            }
+        }
+
+        // A variável de ambiente evita expor o segredo na linha de comando do processo.
+        sessionToken ??= Environment.GetEnvironmentVariable("ERUS_SESSION_TOKEN");
+
+        if (string.IsNullOrWhiteSpace(sessionToken))
+        {
+            Console.WriteLine("[Server] AVISO: nenhum token de sessão definido — o servidor aceitará " +
+                              "qualquer cliente que use o token padrão. Configure ERUS_SESSION_TOKEN " +
+                              "ou --session-token antes de expor esta porta à internet.");
         }
 
         string serverProjectDir = projectId != null 
@@ -79,7 +94,7 @@ class Program
             });
 
             int port = 27015;
-            networkModule.StartServer(port);
+            networkModule.StartServer(port, sessionToken ?? "");
         });
 
         Console.WriteLine("Servidor rodando. Pressione Ctrl+C para encerrar.");
